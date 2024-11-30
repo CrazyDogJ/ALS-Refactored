@@ -10,7 +10,7 @@
 
 #if DO_ENSURE && !USING_CODE_ANALYSIS
 
-bool UE_COLD UE_DEBUG_SECTION AlsEnsure::Execute(std::atomic<bool>& bExecuted, const FAlsEnsureInfo& EnsureInfo, const TCHAR* Format, ...)
+bool UE_DEBUG_SECTION AlsEnsure::Execute(std::atomic<bool>& bExecuted, const FAlsEnsureInfo& EnsureInfo, const TCHAR* Format, ...)
 {
 	static const auto* EnsureAlwaysEnabledConsoleVariable{
 		IConsoleManager::Get().FindConsoleVariable(TEXT("core.EnsureAlwaysEnabled"))
