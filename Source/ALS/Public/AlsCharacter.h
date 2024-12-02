@@ -240,7 +240,7 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
 	void OnRotationModeChanged(const FGameplayTag& PreviousRotationMode);
 
-	void RefreshRotationMode();
+	virtual void RefreshRotationMode();
 
 	// Desired Stance
 
@@ -313,13 +313,13 @@ private:
 
 	FGameplayTag CalculateMaxAllowedGait() const;
 
-	FGameplayTag CalculateActualGait(const FGameplayTag& MaxAllowedGait) const;
-
-	bool CanSprint() const;
-
 	// Overlay Mode
 
 public:
+	virtual FGameplayTag CalculateActualGait(const FGameplayTag& MaxAllowedGait) const;
+	
+	virtual bool CanSprint() const;
+	
 	const FGameplayTag& GetOverlayMode() const;
 
 	UFUNCTION(BlueprintCallable, Category = "ALS|Character", Meta = (AutoCreateRefTerm = "NewOverlayMode"))
@@ -442,10 +442,10 @@ protected:
 	void RefreshGroundedAimingRotation(float DeltaTime);
 
 	bool ConstrainAimingRotation(FRotator& ActorRotation, float DeltaTime, bool bApplySecondaryConstraint = false);
-
-private:
+	
 	void ApplyRotationYawSpeedAnimationCurve(float DeltaTime);
-
+	
+private:
 	void RefreshInAirRotation(float DeltaTime);
 
 protected:
@@ -502,10 +502,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ALS|Character", Meta = (ReturnDisplayName = "Success"))
 	bool StartMantlingGrounded();
 
+	bool StartMantling(const FAlsMantlingTraceSettings& TraceSettings);
 private:
 	bool StartMantlingInAir();
-
-	bool StartMantling(const FAlsMantlingTraceSettings& TraceSettings);
 
 	UFUNCTION(Server, Reliable)
 	void ServerStartMantling(const FAlsMantlingParameters& Parameters);
@@ -557,7 +556,7 @@ protected:
 	void OnRagdollingStarted();
 
 public:
-	bool IsRagdollingAllowedToStop() const;
+	virtual bool IsRagdollingAllowedToStop() const;
 
 	UFUNCTION(BlueprintCallable, Category = "ALS|Character", Meta = (ReturnDisplayName = "Success"))
 	bool StopRagdolling();
@@ -586,7 +585,7 @@ private:
 
 	void RefreshRagdolling(float DeltaTime);
 
-	FVector RagdollTraceGround(bool& bGrounded) const;
+	FVector RagdollTraceGround(bool& bGrounded);
 
 	void ConstraintRagdollSpeed() const;
 

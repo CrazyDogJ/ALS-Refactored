@@ -919,7 +919,7 @@ void AAlsCharacter::RefreshRagdolling(const float DeltaTime)
 	}
 }
 
-FVector AAlsCharacter::RagdollTraceGround(bool& bGrounded) const
+FVector AAlsCharacter::RagdollTraceGround(bool& bGrounded)
 {
 	auto RagdollLocation{!RagdollTargetLocation.IsZero() ? FVector{RagdollTargetLocation} : GetActorLocation()};
 
@@ -943,6 +943,8 @@ FVector AAlsCharacter::RagdollTraceGround(bool& bGrounded) const
 	                                             CollisionChannel, FCollisionShape::MakeSphere(CapsuleRadius),
 	                                             QueryParameters, CollisionResponses);
 
+	RagdollingState.bGrounded = bGrounded;
+	
 	// #if ENABLE_DRAW_DEBUG
 	// 	UAlsDebugUtility::DrawSweepSingleSphere(GetWorld(), TraceStart, TraceEnd, CapsuleRadius,
 	// 	                                        bGrounded, Hit, {0.0f, 0.25f, 1.0f},

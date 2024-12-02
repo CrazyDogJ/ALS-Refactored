@@ -187,7 +187,7 @@ protected:
 
 	virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAcceleration) override;
 
-private:
+public:
 	void SavePenetrationAdjustment(const FHitResult& Hit);
 
 	void ApplyPendingPenetrationAdjustment();
@@ -218,7 +218,7 @@ public:
 	// Varies from 0 to 3, where 0 is stopped, 1 is walking, 2 is running, and 3 is sprinting.
 	float GetGaitAmount() const;
 
-private:
+public:
 	void RefreshGroundedMovementSettings();
 
 public:

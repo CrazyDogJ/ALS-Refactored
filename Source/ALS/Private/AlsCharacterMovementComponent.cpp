@@ -329,7 +329,7 @@ void UAlsCharacterMovementComponent::MoveSmooth(const FVector& InVelocity, const
 	Super::MoveSmooth(InVelocity, DeltaTime, StepDownResult);
 }
 
-void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 IterationsCount)
+void UAlsCharacterMovementComponent::PhysWalking(const float deltaTime, int32 IterationsCount)
 {
 	RefreshGroundedMovementSettings();
 
@@ -342,7 +342,7 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 
 	// SCOPE_CYCLE_COUNTER(STAT_CharPhysWalking);
 
-	if (DeltaTime < MIN_TICK_TIME)
+	if (deltaTime < MIN_TICK_TIME)
 	{
 		return;
 	}
@@ -359,13 +359,11 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 		SetMovementMode(MOVE_Walking);
 		return;
 	}
-
-	// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN before Iteration (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
-
+	
 	bJustTeleported = false;
 	bool bCheckedFall = false;
 	bool bTriedLedgeMove = false;
-	float remainingTime = DeltaTime;
+	float remainingTime = deltaTime;
 
 	const EMovementMode StartingMovementMode = MovementMode;
 	const uint8 StartingCustomMovementMode = CustomMovementMode;
@@ -391,21 +389,13 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 		const FVector OldVelocity = Velocity;
 		Acceleration = FVector::VectorPlaneProject(Acceleration, -GetGravityDirection());
 
-		static const auto* EnsureAlwaysEnabledConsoleVariable{
-			IConsoleManager::Get().FindConsoleVariable(TEXT("p.LedgeMovement.ApplyDirectMove"))
-		};
-		check(EnsureAlwaysEnabledConsoleVariable != nullptr)
-
 		// Apply acceleration
-		const bool bSkipForLedgeMove = bTriedLedgeMove && EnsureAlwaysEnabledConsoleVariable->GetBool();
-		if( !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && !bSkipForLedgeMove )
+		if( !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() )
 		{
 			CalcVelocity(timeTick, GroundFriction, false, GetMaxBrakingDeceleration());
-			// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN after CalcVelocity (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
 		}
-
+		
 		ApplyRootMotionToVelocity(timeTick);
-		// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN after Root Motion application (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
 
 		if (MovementMode != StartingMovementMode || CustomMovementMode != StartingCustomMovementMode)
 		{
@@ -439,10 +429,10 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 			{
 				// pawn ended up in a different mode, probably due to the step-up-and-over flow
 				// let's refund the estimated unused time (if any) and keep moving in the new mode
-				const float DesiredDist = UE_REAL_TO_FLOAT(Delta.Size());
+				const float DesiredDist = Delta.Size();
 				if (DesiredDist > UE_KINDA_SMALL_NUMBER)
 				{
-					const float ActualDist = UE_REAL_TO_FLOAT(ProjectToGravityFloor(UpdatedComponent->GetComponentLocation() - OldLocation).Size());
+					const float ActualDist = (UpdatedComponent->GetComponentLocation() - OldLocation).Size2D();
 					remainingTime += timeTick * (1.f - FMath::Min(1.f,ActualDist/DesiredDist));
 				}
 				StartNewPhysics(remainingTime,Iterations);
@@ -479,7 +469,6 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 				// Try new movement direction
 				Velocity = NewDelta/timeTick;
 				remainingTime += timeTick;
-				Iterations--;
 				continue;
 			}
 			else
@@ -512,9 +501,9 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 						// TODO Start of custom ALS code block.
 
 						ApplyPendingPenetrationAdjustment();
-
+						
 						// TODO End of custom ALS code block.
-
+						
 						// If still walking, then fall. If not, assume the user set a different mode they want to keep.
 						StartFalling(Iterations, remainingTime, timeTick, Delta, OldLocation);
 					}
@@ -524,9 +513,9 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 				// TODO Start of custom ALS code block.
 
 				ApplyPendingPenetrationAdjustment();
-
+						
 				// TODO End of custom ALS code block.
-
+				
 				AdjustFloorHeight();
 				SetBase(CurrentFloor.HitResult.Component.Get(), CurrentFloor.HitResult.BoneName);
 			}
@@ -535,7 +524,7 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 				// The floor check failed because it started in penetration
 				// We do not want to try to move downward because the downward sweep failed, rather we'd like to try to pop out of the floor.
 				FHitResult Hit(CurrentFloor.HitResult);
-				Hit.TraceEnd = Hit.TraceStart + MAX_FLOOR_DIST * -GetGravityDirection();
+				Hit.TraceEnd = Hit.TraceStart + RotateGravityToWorld(FVector(0.f, 0.f, MAX_FLOOR_DIST));
 				const FVector RequestedAdjustment = GetPenetrationAdjustment(Hit);
 				ResolvePenetration(RequestedAdjustment, Hit, UpdatedComponent->GetComponentQuat());
 				bForceNextFloorCheck = true;
@@ -571,9 +560,9 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 
 				PrePenetrationAdjustmentVelocity = MoveVelocity;
 				bPrePenetrationAdjustmentVelocityValid = true;
-
+						
 				// TODO End of custom ALS code block.
-
+				
 				// TODO-RootMotionSource: Allow this to happen during partial override Velocity, but only set allowed axes?
 				Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / timeTick;
 				MaintainHorizontalGroundVelocity();
@@ -585,15 +574,13 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 		{
 			remainingTime = 0.f;
 			break;
-		}
+		}	
 	}
 
 	if (IsMovingOnGround())
 	{
 		MaintainHorizontalGroundVelocity();
 	}
-
-	// ReSharper restore All
 }
 
 void UAlsCharacterMovementComponent::PhysNavWalking(const float DeltaTime, const int32 IterationsCount)

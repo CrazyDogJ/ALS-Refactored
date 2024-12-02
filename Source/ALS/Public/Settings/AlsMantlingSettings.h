@@ -123,6 +123,9 @@ public:
 	FAlsMantlingTraceSettings InAirTrace{{50.0f, 150.0f}, 70.0f};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
+	FAlsMantlingTraceSettings FreeClimbTrace{{50.0f, 150.0f}, 70.0f};
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	TEnumAsByte<ECollisionChannel> MantlingTraceChannel{ECC_Visibility};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")

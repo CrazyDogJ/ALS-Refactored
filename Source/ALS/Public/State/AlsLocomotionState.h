@@ -50,4 +50,7 @@ struct ALS_API FAlsLocomotionState
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	uint8 bResetAimingLimit : 1 {true};
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
+	float LastJumpYawAngle{0.0f};
 };
