@@ -40,8 +40,6 @@ private:
 
 	UFUNCTION(BlueprintPure, Category = "Character Movement: Swimming")
 	FWaterInfoForSwim GetWaterInfoForSwim() const;
-
-	bool bJumpingOutOfWater = false;
 	
 public:
 	// Override the properties
@@ -95,6 +93,8 @@ public:
 
 	UPROPERTY(Transient)
 	bool bJumpInputUnderWater = false;
+	
+	bool bJumpingOutOfWater = false;
 #pragma endregion 
 
 #pragma region FreeClimb

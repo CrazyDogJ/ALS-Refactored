@@ -160,6 +160,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 		
 			Velocity.Z += GetMovementSettingsExtendSafe()->SwimmingSettings.OutWaterSpeed;
 			bJumpingOutOfWater = true;
+			Cast<AAlsCharacter_Extend>(CharacterOwner)->MulticastJumpOutOfWater();
 		}
 		bWantsToJumpOutOfWater = false;
 	}
@@ -1987,7 +1988,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateFromCompressedFlags(uint8 Flag
 void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
 	// Reset jump out of water & Update Swimming
-	if (Velocity.Z < 0 && bJumpingOutOfWater == true)
+	if (Velocity.Z < 0.0f && bJumpingOutOfWater == true)
 	{
 		bJumpingOutOfWater = false;
 	}

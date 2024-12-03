@@ -547,6 +547,11 @@ bool AAlsCharacter_Extend::IsAllowSliding_Implementation()
 	return true;
 }
 
+void AAlsCharacter_Extend::MulticastJumpOutOfWater_Implementation()
+{
+	K2_JumpOutOfWater();
+}
+
 void AAlsCharacter_Extend::SwimUp()
 {
 	if (MovementComponent_Extend->IsSwimming() || MovementComponent_Extend->IsFlying())

@@ -157,6 +157,12 @@ public:
 	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Exit Climb and Enter Walk")
 	void K2_ClimbToWalk();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastJumpOutOfWater();
+	
+	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Jump Out Of Water")
+	void K2_JumpOutOfWater();
 	
 	UFUNCTION(Category = "Character Movement: Swimming", BlueprintCallable, DisplayName = "Swim Up or Fly Up")
 	void SwimUp();
