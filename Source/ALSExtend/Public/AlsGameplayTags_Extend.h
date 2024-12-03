@@ -15,4 +15,6 @@ namespace AlsLocomotionModeTags
 namespace AlsLocomotionActionTags
 {
 	ALSEXTEND_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(AttackCombo)
+	ALSEXTEND_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(ClimbDownLedge)
+	ALSEXTEND_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(ClimbDownFloor)
 }

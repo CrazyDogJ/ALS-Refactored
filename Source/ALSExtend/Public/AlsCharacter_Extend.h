@@ -9,8 +9,20 @@
 #include "AlsCharacterMovementComponent_Extend.h"
 #include "GameplayEffectTypes.h"
 #include "GenericTeamAgentInterface.h"
+#include "MotionWarpingComponent.h"
 #include "SkeletalMeshComponent_Outline.h"
 #include "AlsCharacter_Extend.generated.h"
+
+USTRUCT()
+struct FClimbDownParams
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	UPrimitiveComponent* Component;
+	FTransform Transform_A;
+	FTransform Transform_B;
+};
 
 class UAlsCameraComponent;
 
@@ -39,6 +51,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "GameplayTags")
 	FGameplayTagBlueprintPropertyMap GameplayTagBlueprintPropertyMap;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UMotionWarpingComponent* MotionWarpingComponent;
+	
 	TWeakObjectPtr<class UAbilitySystemComponent> AbilitySystemComponent;
 public:
 	// Look at
@@ -83,11 +98,29 @@ protected:
 	virtual void AddMovementInput(FVector WorldDirection, float ScaleValue = 1.0f, bool bForce = false) override;
 	virtual void OnJumped_Implementation() override;
 	virtual bool RefreshCustomInAirRotation(float DeltaTime) override;
+	virtual void RefreshGait() override;
+	virtual void OnGaitChanged_Implementation(const FGameplayTag& PreviousGait) override;
 	void RefreshSwimmingRotation(float DeltaTime);
 	void RefreshGlidingRotation(float DeltaTime);
 public:
 	AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer);
 
+	// Climb down ledge
+	UFUNCTION(BlueprintCallable)
+	void TryClimbDownLedge();
+
+	UFUNCTION(Server, Reliable)
+	void ServerClimbDownLedge(const FClimbDownParams& Params);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastClimbDownLedge(const FClimbDownParams& Params);
+
+	UFUNCTION()
+	void OnClimbDownMontageBlendOut(UAnimMontage* Montage, bool bInterrupted);
+	
+	void ClimbDownLedgeImplementation(const FClimbDownParams& Params);
+	// Climb down ledge
+	
 	UFUNCTION(BlueprintCallable, Category = "View")
 	void SetLookCompAndSocket(UPrimitiveComponent* InComp, const FName& SocketName);
 
@@ -121,7 +154,7 @@ public:
 	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Exit Climb Dash")
 	void K2_ExitClimbDash();
-
+	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Exit Climb and Enter Walk")
 	void K2_ClimbToWalk();
 	
@@ -175,5 +208,7 @@ public:
 	bool StartMantlingSwimming();
 
 	bool StartMantlingFreeClimb();
+
+	bool StartMantlingGliding();
 	#pragma endregion 
 };

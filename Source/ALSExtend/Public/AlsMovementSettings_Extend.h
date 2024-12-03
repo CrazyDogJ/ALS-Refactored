@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Settings/AlsMovementSettings.h"
 #include "AlsMovementSettings_Extend.generated.h"
 
 USTRUCT(BlueprintType)
@@ -37,6 +36,9 @@ struct ALSEXTEND_API FAlsGlidingSettings
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(ClampMin="0", UIMin="0"))
 	float GlideRotationInterpSpeed{0.5f};
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(ClampMin="0", UIMin="0"))
+	float GlideToFallCheckHeight{100.0f};
 };
 
 USTRUCT(BlueprintType)
@@ -123,6 +125,21 @@ struct ALSEXTEND_API FAlsClimbingSettings
 
 	UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0", ClampMax = "80.0"), BlueprintReadOnly)
 	float ClimbingCollisionShrinkAmount = 30.0f;
+
+	UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0"), BlueprintReadOnly)
+	float SlopeSpeedMultiplier = 80.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Climb Down")
+	UAnimMontage* ClimbDownMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Climb Down")
+	UAnimMontage* ClimbDownFloorMontage;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Climb Down")
+	FName WarpTarget_A = "ClimbDown_A";
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Climb Down")
+	FName WarpTarget_B = "ClimbDown_B";
 };
 
 USTRUCT(BlueprintType)

@@ -214,14 +214,12 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void RemoveIgnoreSwingRope(AActor* RemoveActor);
 	//Swing end
-	
 	UFUNCTION(BlueprintCallable)
 	void CacheClimbDownInfo();
 
 	UFUNCTION(BlueprintCallable)
 	void ResetClimbDownInfo();
 	
-	UFUNCTION(BlueprintCallable)
 	void TryClimbDashing();
 	void StoreClimbDashDirection();
 
@@ -355,6 +353,11 @@ private:
 public:
 	UFUNCTION(BlueprintCallable, Category = "Character Movement: Gliding")
 	void ToggleGlide();
+
+	UFUNCTION(Server, Reliable)
+	void ServerToggleGlide();
+
+	void ToggleGlideImplementation();
 	
 	UFUNCTION(BlueprintPure, Category = "Character Movement: Gliding")
 	bool IsGliding() const;

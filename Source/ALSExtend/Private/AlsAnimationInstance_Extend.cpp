@@ -3,6 +3,11 @@
 
 #include "AlsAnimationInstance_Extend.h"
 
+#include "AlsGameplayTags_Extend.h"
+#include "Settings/AlsAnimationInstanceSettings.h"
+#include "Utility/AlsConstants.h"
+#include "Utility/AlsDebugUtility.h"
+
 float UAlsAnimationInstance_Extend::GetBlinkDelay() const
 {
 	if (MorphSettings)

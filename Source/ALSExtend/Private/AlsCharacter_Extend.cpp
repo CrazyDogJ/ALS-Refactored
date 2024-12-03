@@ -71,6 +71,21 @@ void AAlsCharacter_Extend::Tick(float DeltaSeconds)
 		
 	RefreshSwimmingRotation(DeltaSeconds);
 	RefreshGlidingRotation(DeltaSeconds);
+
+	if (MovementComponent_Extend->IsClimbing())
+	{
+		// Used to fix mantle check;
+		LocomotionState.bHasVelocity = false;
+		LocomotionState.bHasInput = false;
+	}
+
+	if (MovementComponent_Extend->IsGliding())
+	{
+		if (StartMantlingGliding())
+		{
+			MovementComponent_Extend->SetMovementMode(MOVE_Falling);
+		}
+	}
 	
 	// TODO:RopeSwing
 	//if (LocomotionMode == AlsLocomotionModeTags::RopeSwing)
@@ -410,10 +425,100 @@ AAlsCharacter_Extend::AAlsCharacter_Extend(const FObjectInitializer& ObjectIniti
 	Camera->SetRelativeRotation_Direct({0.0f, 90.0f, 0.0f});
 	MovementComponent_Extend = Cast<UAlsCharacterMovementComponent_Extend>(GetCharacterMovement());
 	Mesh_Outline = Cast<USkeletalMeshComponent_Outline>(GetMesh());
+	MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(FName{TEXTVIEW("MotionWarping")});
 	GetCapsuleComponent()->SetNotifyRigidBodyCollision(true);
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AAlsCharacter_Extend::OnCapsuleHit);
 
 	GetMesh()->OnComponentHit.AddDynamic(this, &AAlsCharacter_Extend::OnMeshHit);
+}
+
+void AAlsCharacter_Extend::TryClimbDownLedge()
+{
+	if (!MovementComponent_Extend->bCanClimbDownLedge)
+	{
+		return;
+	}
+	
+	MovementComponent_Extend->CacheClimbDownInfo();
+
+	FTransform TransformA = UKismetMathLibrary::MakeRelativeTransform(
+		FTransform(GetActorRotation(),
+		MovementComponent_Extend->ClimbDownWarpingTarget_Forward, FVector::OneVector),
+		MovementComponent_Extend->ClimbDownCachedComponent->GetComponentTransform());
+
+	FTransform TransformB = UKismetMathLibrary::MakeRelativeTransform(
+		FTransform(MovementComponent_Extend->ClimbDownWarpingRotation_Down,
+		MovementComponent_Extend->ClimbDownWarpingTarget_Down, FVector::OneVector),
+		MovementComponent_Extend->ClimbDownCachedComponent->GetComponentTransform());
+
+	auto ClimbDownParams = FClimbDownParams(MovementComponent_Extend->ClimbDownCachedComponent, TransformA, TransformB);
+
+	if (GetLocalRole() >= ROLE_Authority)
+	{
+		MulticastClimbDownLedge(ClimbDownParams);
+	}
+	else
+	{
+		GetCharacterMovement()->FlushServerMoves();
+
+		ClimbDownLedgeImplementation(ClimbDownParams);
+		ServerClimbDownLedge(ClimbDownParams);
+	}
+}
+
+void AAlsCharacter_Extend::ServerClimbDownLedge_Implementation(const FClimbDownParams& Params)
+{
+	if (MovementComponent_Extend->bCanClimbDownLedge)
+	{
+		MulticastClimbDownLedge(Params);
+		ForceNetUpdate();
+	}
+}
+
+void AAlsCharacter_Extend::MulticastClimbDownLedge_Implementation(const FClimbDownParams& Params)
+{
+	ClimbDownLedgeImplementation(Params);
+}
+
+void AAlsCharacter_Extend::OnClimbDownMontageBlendOut(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (!RuntimeMovementSettings_Extend)
+	{
+		return;
+	}
+	
+	if (Montage != RuntimeMovementSettings_Extend->ClimbingSettings.ClimbDownMontage)
+	{
+		return;
+	}
+
+	MovementComponent_Extend->StopMovementImmediately();
+	MovementComponent_Extend->SetMovementMode(MOVE_Falling);
+	SetLocomotionAction(FGameplayTag::EmptyTag);
+	K2_AutoTryClimb();
+}
+
+void AAlsCharacter_Extend::ClimbDownLedgeImplementation(const FClimbDownParams& Params)
+{
+	if (!RuntimeMovementSettings_Extend)
+	{
+		return;
+	}
+	
+	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(RuntimeMovementSettings_Extend->ClimbingSettings.WarpTarget_A,
+													   Params.Component, FName(), true,
+													   Params.Transform_A.GetLocation(), Params.Transform_A.GetRotation().Rotator());
+
+	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(RuntimeMovementSettings_Extend->ClimbingSettings.WarpTarget_B,
+													   Params.Component, FName(), true,
+													   Params.Transform_B.GetLocation(), Params.Transform_B.GetRotation().Rotator());
+
+	MovementComponent_Extend->SetMovementMode(MOVE_Flying);
+	
+	GetMesh()->GetAnimInstance()->Montage_Play(RuntimeMovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
+	auto Delegate = GetMesh()->GetAnimInstance()->Montage_GetBlendingOutDelegate(RuntimeMovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
+	Delegate->BindUFunction(this, "OnClimbDownMontageBlendOut");
+	SetLocomotionAction(AlsLocomotionActionTags::ClimbDownLedge);
 }
 
 void AAlsCharacter_Extend::SetLookCompAndSocket(UPrimitiveComponent* InComp, const FName& SocketName)
@@ -474,6 +579,12 @@ void AAlsCharacter_Extend::SwimUpStop()
 
 void AAlsCharacter_Extend::AddMovementInput(FVector WorldDirection, float ScaleValue, bool bForce)
 {
+	// Ignore movement input when climb down floor
+	if (LocomotionAction == AlsLocomotionActionTags::ClimbDownFloor)
+	{
+		return;
+	}
+	
 	if (MovementComponent_Extend->IsClimbing())
 	{
 		const FVector DirectionRight = FVector::CrossProduct(MovementComponent_Extend->GetClimbSurfaceNormal(), -GetActorRightVector()) * WorldDirection.Y;
@@ -705,6 +816,12 @@ bool AAlsCharacter_Extend::StartMantlingFreeClimb()
 		   StartMantling(Settings->Mantling.FreeClimbTrace); 
 }
 
+bool AAlsCharacter_Extend::StartMantlingGliding()
+{
+	return LocomotionMode == AlsLocomotionModeTags::Gliding && IsLocallyControlled() &&
+		   StartMantling(Settings->Mantling.InAirTrace); 
+}
+
 void AAlsCharacter_Extend::TurnInPlaceImmediately_Implementation()
 {
 	Cast<UAlsAnimationInstance_Extend>(GetMesh()->GetAnimInstance())->TurnInPlaceImmediately();
@@ -767,4 +884,40 @@ bool AAlsCharacter_Extend::RefreshCustomInAirRotation(float DeltaTime)
 	}
 	
 	return true;
+}
+
+void AAlsCharacter_Extend::RefreshGait()
+{
+	if (LocomotionMode == AlsLocomotionModeTags::FreeClimbing)
+	{
+		SetGait(GetDesiredGait());
+		return;
+	}
+	
+	if (LocomotionMode != AlsLocomotionModeTags::Grounded &&
+		LocomotionMode != AlsLocomotionModeTags::Flying &&
+		LocomotionMode != AlsLocomotionModeTags::Swimming)
+	{
+		return;
+	}
+	
+	const auto MaxAllowedGait{CalculateMaxAllowedGait()};
+
+	// Update the character max walk speed to the configured speeds based on the currently max allowed gait.
+
+	AlsCharacterMovement->SetMaxAllowedGait(MaxAllowedGait);
+
+	const auto ActualGait{CalculateActualGait(MaxAllowedGait)};
+
+	SetGait(ActualGait);
+}
+
+void AAlsCharacter_Extend::OnGaitChanged_Implementation(const FGameplayTag& PreviousGait)
+{
+	Super::OnGaitChanged_Implementation(PreviousGait);
+
+	if (Gait == AlsGaitTags::Sprinting)
+	{
+		MovementComponent_Extend->TryClimbDashing();
+	}
 }

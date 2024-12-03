@@ -721,9 +721,9 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 
 	//Move on ledge
 	const float UpSpeed = FVector::DotProduct(Velocity, UpdatedComponent->GetUpVector());
-	const bool bIsMovingUp = UpSpeed >= GetMovementSettingsExtendSafe()->ClimbingSettings.MaxClimbingSpeed / 3;
+	const bool bIsMovingUp = UpSpeed >= 1.0f && Acceleration.Z > 1.0f;
 	
-	if (bIsMovingUp && HasReachedEdge())
+	if (bIsMovingUp && HasReachedEdge() && !HasAnimRootMotion())
 	{
 		if (auto* Character = Cast<AAlsCharacter_Extend>(GetOwner()))
 		{
@@ -826,6 +826,9 @@ void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 
 	{
 		SetMovementMode(MOVE_Walking);
 		StartNewPhysics(deltaTime, Iterations);
+		StopMovementImmediately();
+		auto Character = Cast<AAlsCharacter_Extend>(CharacterOwner);
+		Character->GetMesh()->GetAnimInstance()->Montage_Play(GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDownFloorMontage);
 	}
 	else
 	{
@@ -863,18 +866,28 @@ void UAlsCharacterMovementComponent_Extend::SnapToClimbingSurface(float deltaTim
 
 bool UAlsCharacterMovementComponent_Extend::ClimbDownToFloor() const
 {
-	FFindFloorResult FloorResult;
-	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
-	const float Radius = Capsule->GetScaledCapsuleRadius();
-	
-	const FVector FindFloorLocation = UpdatedComponent->GetComponentLocation() + UpdatedComponent->GetForwardVector() * -Radius;
-	FindFloor(FindFloorLocation, FloorResult, false);
-
 	if (Velocity.Z < 0 && Acceleration.Z < 0)
 	{
+		FFindFloorResult FloorResult;
+		const FVector FindFloorLocation = UpdatedComponent->GetComponentLocation();
+
+		// First simple check
+		FindFloor(FindFloorLocation, FloorResult, false);
 		if (IsValidLandingSpot(FindFloorLocation, FloorResult.HitResult) && FloorResult.IsWalkableFloor())
 		{
-			return true;
+			// Enough space check
+			FHitResult EnoughSpaceCheckHitResult;
+			FVector End = FindFloorLocation - FVector(0,0,DefaultStandHalfHeight);
+			FCollisionQueryParams Params;
+			Params.AddIgnoredActor(GetCharacterOwner());
+			GetWorld()->SweepSingleByChannel(EnoughSpaceCheckHitResult, FindFloorLocation,
+			                                 End, FQuat::Identity, ECC_Visibility,
+			                                 FCollisionShape::MakeSphere(DefaultStandRadius), Params);
+
+			if (IsWalkable(EnoughSpaceCheckHitResult))
+			{
+				return true;
+			}
 		}
 	}
 	
@@ -1293,7 +1306,7 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	}
 
 	//6.Check enough space(Forward);
-	const FVector CheckSpace_1 = EdgeHit.ImpactPoint + (DefaultRadius + 1) * LineWallHit.ImpactNormal.GetSafeNormal2D();
+	const FVector CheckSpace_1 = EdgeHit.ImpactPoint + (DefaultRadius * 2) * LineWallHit.ImpactNormal.GetSafeNormal2D();
 	FHitResult CheckSpaceHit;
 	GetWorld()->SweepSingleByChannel(CheckSpaceHit, CheckSpace_1, CheckSpace_1 + FVector(0, 0, (DefaultHalfHeight - DefaultRadius) * 2),
 	                                 FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
@@ -1304,7 +1317,7 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	
 	//7.Set params;
 	Forward = CheckSpace_1;
-	Down = CheckStartClimbLoc - FVector(0,0,DefaultHalfHeight);
+	Down = CheckStartClimbLoc - FVector(0,0,DefaultHalfHeight * 1.25f);
 	FaceTo = (-Normal).Rotation();
 	bInCanClimbDown = true;
 }
@@ -1452,7 +1465,7 @@ void UAlsCharacterMovementComponent_Extend::ResetClimbDownInfo()
 
 void UAlsCharacterMovementComponent_Extend::TryClimbDashing()
 {
-	if (GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDashCurve && bIsClimbDashing == false)
+	if (GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDashCurve && bIsClimbDashing == false && IsClimbing())
 	{
 		bIsClimbDashing = true;
 		Cast<AAlsCharacter_Extend>(GetCharacterOwner())->K2_EnterClimbDash();
@@ -1851,7 +1864,9 @@ float UAlsCharacterMovementComponent_Extend::GetMaxSpeed() const
 {
 	if (IsClimbing())
 	{
-		return GetMovementSettingsExtendSafe()->ClimbingSettings.MaxClimbingSpeed;
+		
+		auto AngleDegree = FVector::DotProduct(CurrentClimbingNormal, FVector(0, 0, 1));
+		return GetMovementSettingsExtendSafe()->ClimbingSettings.MaxClimbingSpeed + AngleDegree * GetMovementSettingsExtendSafe()->ClimbingSettings.SlopeSpeedMultiplier;
 	}
 	
 	if (IsSliding())
@@ -1990,7 +2005,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 	}
 	
 	// Update free climbing
-	if (bWantsToClimb)
+	if (bWantsToClimb && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
 	{
 		SetMovementMode(MOVE_Custom, CMOVE_FreeClimb);
 	}
@@ -2020,7 +2035,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 	CheckClimbDownLedge(ClimbDownNull_A, ClimbDownNull_A, ClimbDownNull_B, bCanClimbDownLedge);
 
 	// Check landing when flying
-	if (IsFlying() && Velocity.Z < 0 && GetMovementSettingsExtendSafe()->FlyingSettings.bShouldCheckLand)
+	if (IsFlying() && Velocity.Z < 0 && GetMovementSettingsExtendSafe()->FlyingSettings.bShouldCheckLand && !HasAnimRootMotion())
 	{
 		FFindFloorResult FloorResult;
 		FindFloor(UpdatedComponent->GetComponentLocation(), FloorResult, false);
@@ -2616,6 +2631,26 @@ bool UAlsCharacterMovementComponent_Extend::IsSliding() const
 
 void UAlsCharacterMovementComponent_Extend::ToggleGlide()
 {
+	if (CharacterOwner->GetLocalRole() >= ROLE_Authority)
+	{
+		ToggleGlideImplementation();
+	}
+	else
+	{
+		FlushServerMoves();
+
+		ToggleGlideImplementation();
+		ServerToggleGlide();
+	}
+}
+
+void UAlsCharacterMovementComponent_Extend::ServerToggleGlide_Implementation()
+{
+	ToggleGlideImplementation();
+}
+
+void UAlsCharacterMovementComponent_Extend::ToggleGlideImplementation()
+{
 	if (Super::IsFalling())
 	{
 		FHitResult HitResult;
@@ -2931,13 +2966,21 @@ void UAlsCharacterMovementComponent_Extend::PhysGliding(float deltaTime, int32 I
 				}
 			}
 		}
-
+		
 		FVector GravityRelativeVelocity = RotateWorldToGravity(Velocity);
 		if (GravityRelativeVelocity.SizeSquared2D() <= UE_KINDA_SMALL_NUMBER * 10.f)
 		{
 			GravityRelativeVelocity.X = 0.f;
 			GravityRelativeVelocity.Y = 0.f;
 			Velocity = RotateGravityToWorld(GravityRelativeVelocity);
+		}
+
+		FFindFloorResult FindFloorResult;
+		FVector FindLocation = UpdatedComponent->GetComponentLocation() - FVector(GetMovementSettingsExtendSafe()->GlidingSettings.GlideToFallCheckHeight);
+		FindFloor(FindLocation, FindFloorResult,false);
+		if (IsValidLandingSpot(FindLocation, FindFloorResult.HitResult))
+		{
+			SetMovementMode(MOVE_Falling);
 		}
 	}
 }

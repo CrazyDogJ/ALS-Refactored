@@ -302,17 +302,15 @@ private:
 public:
 	const FGameplayTag& GetGait() const;
 
+	virtual void RefreshGait();
+
+	FGameplayTag CalculateMaxAllowedGait() const;
 protected:
 	void SetGait(const FGameplayTag& NewGait);
 
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
 	void OnGaitChanged(const FGameplayTag& PreviousGait);
-
-private:
-	void RefreshGait();
-
-	FGameplayTag CalculateMaxAllowedGait() const;
-
+	
 	// Overlay Mode
 
 public:

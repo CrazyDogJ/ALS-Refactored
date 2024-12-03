@@ -13,4 +13,6 @@ namespace AlsLocomotionModeTags
 namespace AlsLocomotionActionTags
 {
 	UE_DEFINE_GAMEPLAY_TAG(AttackCombo, FName{TEXTVIEW("Als.LocomotionAction.AttackCombo")})
+	UE_DEFINE_GAMEPLAY_TAG(ClimbDownLedge, FName{TEXTVIEW("Als.LocomotionAction.ClimbDownLedge")})
+	UE_DEFINE_GAMEPLAY_TAG(ClimbDownFloor, FName{TEXTVIEW("Als.LocomotionAction.ClimbDownFloor")})
 }

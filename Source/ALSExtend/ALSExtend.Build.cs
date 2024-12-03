@@ -9,7 +9,14 @@ public class ALSExtend : ModuleRules
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
-                "Core", "ALS", "ALSCamera", "Water"
+                "Core", 
+                "ALS", 
+                "ALSCamera", 
+                "Water", 
+                "MotionWarping", 
+                "GameplayAbilities",
+                "GameplayTags",
+                "AIModule"
             }
         );
 
@@ -20,10 +27,7 @@ public class ALSExtend : ModuleRules
                 "RHI",
                 "Engine",
                 "Slate",
-                "SlateCore",
-                "GameplayAbilities",
-                "GameplayTags",
-                "AIModule"
+                "SlateCore"
             }
         );
     }

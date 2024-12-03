@@ -139,14 +139,22 @@ void AAlsCharacter::RefreshRollingPhysics(const float DeltaTime)
 
 bool AAlsCharacter::StartMantlingGrounded()
 {
-	return LocomotionMode == AlsLocomotionModeTags::Grounded &&
-	       StartMantling(Settings->Mantling.GroundedTrace);
+	if (!HasAnyRootMotion())
+	{
+		return LocomotionMode == AlsLocomotionModeTags::Grounded &&
+        	       StartMantling(Settings->Mantling.GroundedTrace);
+	}
+	return false;
 }
 
 bool AAlsCharacter::StartMantlingInAir()
 {
-	return LocomotionMode == AlsLocomotionModeTags::InAir && IsLocallyControlled() &&
-	       StartMantling(Settings->Mantling.InAirTrace);
+	if (!HasAnyRootMotion())
+	{
+		return LocomotionMode == AlsLocomotionModeTags::InAir && IsLocallyControlled() &&
+		   StartMantling(Settings->Mantling.InAirTrace);
+	}
+	return false;
 }
 
 bool AAlsCharacter::IsMantlingAllowedToStart_Implementation() const
@@ -181,7 +189,10 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 	const auto ForwardTraceDeltaAngle{FMath::UnwindDegrees(ForwardTraceAngle - ActorYawAngle)};
 	if (FMath::Abs(ForwardTraceDeltaAngle) > Settings->Mantling.TraceAngleThreshold)
 	{
-		return false;
+		if (!TraceSettings.bSkipForwardTraceAngleCheck)
+		{
+			return false;
+		}
 	}
 
 	const auto ForwardTraceDirection{

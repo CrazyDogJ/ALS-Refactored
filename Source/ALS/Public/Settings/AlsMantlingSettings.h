@@ -85,6 +85,9 @@ struct ALS_API FAlsMantlingTraceSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 0))
 	uint8 bDrawFailedTraces : 1 {false};
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
+	uint8 bSkipForwardTraceAngleCheck : 1 {false};
 };
 
 USTRUCT(BlueprintType)
