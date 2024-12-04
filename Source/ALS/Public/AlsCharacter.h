@@ -476,6 +476,8 @@ public:
 
 	bool IsRollingAllowedToStart(const UAnimMontage* Montage) const;
 
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	UAlsFootstepEffectsSettings* SelectFootstepSettings();
 private:
 	void StartRolling(float PlayRate, float TargetYawAngle);
 

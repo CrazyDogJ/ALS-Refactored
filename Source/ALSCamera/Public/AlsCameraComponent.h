@@ -7,6 +7,8 @@
 class UAlsCameraSettings;
 class ACharacter;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FCalPostProcess, FPostProcessSettings, PP_Settings, float, BlendWeight);
+
 UCLASS(ClassGroup = "ALS", Meta = (BlueprintSpawnableComponent),
 	HideCategories = ("ComponentTick", "Clothing", "Physics", "MasterPoseComponent", "Collision", "AnimationRig",
 		"Lighting", "Deformer", "Rendering", "PathTracing", "HLOD", "Navigation", "VirtualTexture", "SkeletalMesh",
@@ -19,6 +21,53 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	TObjectPtr<UAlsCameraSettings> Settings;
 
+	// TODO Extend Start
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient, Meta = (ClampMin = 5, ClampMax = 360, ForceUnits = "deg"))
+	float CameraFov{90.0f};
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ALS", Meta = (ClampMin = 0, ClampMax = 100))
+	float CameraOrthoNearClipPlane{10.0f};
+	
+	UPROPERTY(BlueprintAssignable, Category = "Settings")
+	FCalPostProcess CalPostProcessEvent;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
+	FPostProcessSettings OverridePostProcessSettings;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", Meta = (ClampMin = 0, ClampMax = 1))
+	float OverridePostProcessWeight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
+	float MinOffsetX = -100;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
+	float MaxOffsetX = 100;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Settings")
+	float TargetOffsetX = 0;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Settings")
+	float CurrentOffsetX = 0;
+
+	//Useful for controller possessed another pawn.
+	UPROPERTY(BlueprintReadWrite, Category = "State")
+	AController* OverrideController;
+
+	//Photo Mode Start
+	/** Used for photo mode */
+	UPROPERTY(BlueprintReadWrite, Category = "Photo Mode")
+	float CameraFovOverride{90.0f};
+
+	/** Used for photo mode */
+	UPROPERTY(BlueprintReadWrite, Category = "Photo Mode")
+	float CameraRollOverride{0.0f};
+
+	/** Used for photo mode */
+	UPROPERTY(BlueprintReadWrite, Category = "Photo Mode")
+	bool bIsPhotoMode = false;
+	//Photo Mode End
+	//TODO Extend End
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", Meta = (InlineEditConditionToggle))
 	uint8 bOverrideFieldOfView : 1 {false};
 
@@ -126,6 +175,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ALS|Camera")
 	void GetViewInfo(FMinimalViewInfo& ViewInfo) const;
 
+	UFUNCTION(BlueprintCallable, Category = "ALS|Als Camera")
+	void AddOffsetX(float Value);
+
+	UFUNCTION(BlueprintCallable, Category = "ALS|Als Camera")
+	void SetOffsetX(float Value, bool bClamp = false);
 private:
 	void TickCamera(float DeltaTime, bool bAllowLag = true);
 

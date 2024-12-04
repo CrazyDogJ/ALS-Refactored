@@ -76,19 +76,24 @@ void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimS
                                             const FAnimNotifyEventReference& NotifyEventReference)
 {
 	Super::Notify(Mesh, Sequence, NotifyEventReference);
-
+	
 	if (!IsValid(Mesh) || !ALS_ENSURE(IsValid(FootstepEffectsSettings)))
 	{
 		return;
 	}
 
-	const auto* Character{Cast<AAlsCharacter>(Mesh->GetOwner())};
+	auto* Character{Cast<AAlsCharacter>(Mesh->GetOwner())};
 
 	if (bSkipEffectsWhenInAir && IsValid(Character) && Character->GetLocomotionMode() == AlsLocomotionModeTags::InAir)
 	{
 		return;
 	}
 
+	if (auto OverrideSettings = Character->SelectFootstepSettings())
+	{
+		FootstepEffectsSettings = OverrideSettings;
+	}
+	
 #if ENABLE_DRAW_DEBUG
 	const auto bDisplayDebug{UAlsDebugUtility::ShouldDisplayDebugForActor(Mesh->GetOwner(), UAlsConstants::TracesDebugDisplayName())};
 #endif

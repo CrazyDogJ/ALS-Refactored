@@ -142,13 +142,35 @@ void UAlsCameraComponent::GetViewInfo(FMinimalViewInfo& ViewInfo) const
 {
 	ViewInfo.Location = CameraLocation;
 	ViewInfo.Rotation = CameraRotation;
-	ViewInfo.FOV = CameraFieldOfView;
+	ViewInfo.FOV = CameraFov;
+	ViewInfo.PerspectiveNearClipPlane = CameraOrthoNearClipPlane;
 
-	ViewInfo.PostProcessBlendWeight = IsValid(Settings) ? PostProcessWeight : 0.0f;
-
-	if (ViewInfo.PostProcessBlendWeight > UE_SMALL_NUMBER)
+	if (OverridePostProcessWeight > 0.0f)
 	{
+		ViewInfo.PostProcessBlendWeight = OverridePostProcessWeight;
+		ViewInfo.PostProcessSettings = OverridePostProcessSettings;
+	}
+	else if (ViewInfo.PostProcessBlendWeight > UE_SMALL_NUMBER)
+	{
+		ViewInfo.PostProcessBlendWeight = IsValid(Settings) ? PostProcessWeight : 0.0f;
 		ViewInfo.PostProcessSettings = Settings->PostProcess;
+	}
+}
+
+void UAlsCameraComponent::AddOffsetX(float Value)
+{
+	TargetOffsetX = FMath::Clamp(TargetOffsetX+Value, MinOffsetX, MaxOffsetX);
+}
+
+void UAlsCameraComponent::SetOffsetX(float Value, bool bClamp)
+{
+	if (bClamp)
+	{
+		TargetOffsetX = FMath::Clamp(Value, MinOffsetX, MaxOffsetX);
+	}
+	else
+	{
+		TargetOffsetX = Value;
 	}
 }
 
@@ -176,7 +198,7 @@ void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 #endif
 
 	// Refresh movement base.
-
+	
 	const auto& BasedMovement{Character->GetBasedMovement()};
 	const auto bMovementBaseHasRelativeRotation{BasedMovement.HasRelativeRotation()};
 
@@ -329,6 +351,15 @@ void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 	}
 
 	CameraFieldOfView = FMath::Clamp(CameraFieldOfView + CalculateFovOffset(), 5.0f, 175.0f);
+
+	//Camera distance lag;
+	if (GetAnimInstance())
+	{
+		const float OffsetXSpeed = {GetAnimInstance()->GetCurveValue(UAlsCameraConstants::LocationLagXCurveName())};
+		CurrentOffsetX = UAlsMath::ExponentialDecay(CurrentOffsetX, TargetOffsetX, DeltaTime,OffsetXSpeed);
+	}
+	
+	CalPostProcessEvent.Broadcast(Settings->PostProcess, PostProcessWeight);
 }
 
 FRotator UAlsCameraComponent::CalculateCameraRotation(const FRotator& CameraTargetRotation,

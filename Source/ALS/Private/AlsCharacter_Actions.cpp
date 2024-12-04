@@ -65,6 +65,11 @@ void AAlsCharacter::StartRolling(const float PlayRate, const float TargetYawAngl
 	}
 }
 
+UAlsFootstepEffectsSettings* AAlsCharacter::SelectFootstepSettings_Implementation()
+{
+	return nullptr;
+}
+
 UAnimMontage* AAlsCharacter::SelectRollMontage_Implementation()
 {
 	return Settings->Rolling.Montage;
@@ -692,9 +697,10 @@ bool AAlsCharacter::IsRagdollingAllowedToStart() const
 {
 	return LocomotionAction != AlsLocomotionActionTags::Ragdolling &&
 	       ALS_ENSURE_MESSAGE(GetMesh()->GetBodyInstance(UAlsConstants::PelvisBoneName()) != nullptr &&
-	                          GetMesh()->GetBodyInstance(UAlsConstants::Spine03BoneName()) != nullptr,
-	                          TEXT("A physics asset with the %s and %s bones are required for the ragdolling to work."),
-	                          *UAlsConstants::PelvisBoneName().ToString(), *UAlsConstants::Spine03BoneName().ToString());
+	                          (GetMesh()->GetBodyInstance(UAlsConstants::Spine03BoneName()) != nullptr ||
+	                          	GetMesh()->GetBodyInstance(UAlsConstants::Spine02BoneName()) != nullptr),
+	                          TEXT("A physics asset with the %s and %s or %s bones are required for the ragdolling to work."),
+	                          *UAlsConstants::PelvisBoneName().ToString(), *UAlsConstants::Spine03BoneName().ToString(), *UAlsConstants::Spine02BoneName().ToString());
 }
 
 void AAlsCharacter::StartRagdolling()
@@ -766,7 +772,10 @@ void AAlsCharacter::StartRagdollingImplementation()
 	GetMesh()->SetCollisionObjectType(ECC_PhysicsBody);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	GetMesh()->SetSimulatePhysics(true);
-
+	// I have no idea why ragdoll will fly around when any physics body instances are set to "Simulated" in physics asset.
+	// So I have to reset physics after we enable ragdoll.
+	GetMesh()->ResetAllBodiesSimulatePhysics();
+	
 	const auto* PelvisBody{GetMesh()->GetBodyInstance(UAlsConstants::PelvisBoneName())};
 	FVector PelvisLocation;
 
@@ -883,8 +892,9 @@ void AAlsCharacter::RefreshRagdolling(const float DeltaTime)
 
 		const auto HorizontalSpeedSquared{RagdollingState.Velocity.SizeSquared2D()};
 
+		const FName SpineEndName = GetMesh()->GetBodyInstance(UAlsConstants::Spine03BoneName()) != nullptr ? UAlsConstants::Spine03BoneName() : UAlsConstants::Spine02BoneName();
 		const auto PullForceBoneName{
-			HorizontalSpeedSquared > FMath::Square(300.0f) ? UAlsConstants::Spine03BoneName() : UAlsConstants::PelvisBoneName()
+			HorizontalSpeedSquared > FMath::Square(300.0f) ? SpineEndName : UAlsConstants::PelvisBoneName()
 		};
 
 		auto* PullForceBody{GetMesh()->GetBodyInstance(PullForceBoneName)};
