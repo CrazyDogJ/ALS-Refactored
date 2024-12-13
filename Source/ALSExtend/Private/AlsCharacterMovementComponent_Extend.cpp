@@ -1263,6 +1263,15 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	//4.Check can start climbing;
 	const FVector CheckStartClimbLoc = LineWallHit.ImpactPoint + LineWallHit.ImpactNormal * DefaultRadius;
 	const FVector CheckStartClimbNormal = (LineWallHit.ImpactNormal * -1).GetSafeNormal2D();
+	// Check water
+	FHitResult WaterCheckHit;
+	FCollisionQueryParams WaterCheckHitQueryParams;
+	WaterCheckHitQueryParams.AddIgnoredActor(GetOwner());
+	GetWorld()->LineTraceSingleByChannel(WaterCheckHit, CheckStartClimbLoc, CheckStartClimbLoc - FVector(0,0,1), ECC_WorldStatic, WaterCheckHitQueryParams);
+	if (Cast<AWaterBody>(WaterCheckHit.GetActor()))
+	{
+		return;
+	}
 	//check start
 	TArray<FHitResult> InClimbWallHits;
 	FHitResult InVelocityWallHit;
@@ -1318,7 +1327,7 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	
 	//7.Set params;
 	Forward = CheckSpace_1;
-	Down = CheckStartClimbLoc - FVector(0,0,DefaultHalfHeight * 1.25f);
+	Down = CheckStartClimbLoc - FVector(0,0,DefaultHalfHeight);
 	FaceTo = (-Normal).Rotation();
 	bInCanClimbDown = true;
 }
@@ -2025,9 +2034,12 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 		!CurrentRootMotion.HasVelocity() &&
 		IsMovingOnGround())
 	{
-		float AccelHorDegree;
-		bool bCanStartClimbing = CanStartClimbing(AccelHorDegree, CurrentWallHits, VelocityWallHit, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetForwardVector());
-		StartClimbingTimer(AccelHorDegree,DeltaSeconds,bCanStartClimbing);
+		if (EyeHeightTrace(DefaultStandRadius * 5, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector(), true))
+		{
+			float AccelHorDegree;
+			bool bCanStartClimbing = CanStartClimbing(AccelHorDegree, CurrentWallHits, VelocityWallHit, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetForwardVector());
+			StartClimbingTimer(AccelHorDegree,DeltaSeconds,bCanStartClimbing);
+		}
 	}
 
 	// Update can climb down
@@ -2673,6 +2685,28 @@ void UAlsCharacterMovementComponent_Extend::ToggleGlideImplementation()
 	{
 		SetMovementMode(MOVE_Falling);
 	}
+}
+
+bool UAlsCharacterMovementComponent_Extend::CheckCanGlide()
+{
+	if (Super::IsFalling())
+	{
+		FHitResult HitResult;
+		FCollisionQueryParams Params;
+		Params.AddIgnoredActor(GetOwner());
+		GetWorld()->LineTraceSingleByChannel(HitResult, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentLocation() - FVector(0,0, GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight), ECC_Pawn, Params);
+		if (Cast<AAlsCharacter_Extend>(CharacterOwner)->IsAllowGliding() && !HitResult.IsValidBlockingHit())
+		{
+			//Check Water
+			FHitResult HitResult_1;
+			GetWorld()->LineTraceSingleByObjectType(HitResult_1, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentLocation() - FVector(0,0, GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight), ECC_WorldStatic, Params);
+			if (!Cast<AWaterBody>(HitResult_1.GetActor()))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 bool UAlsCharacterMovementComponent_Extend::IsGliding() const

@@ -520,7 +520,8 @@ void AAlsCharacter::NotifyLocomotionModeChanged(const FGameplayTag& PreviousLoco
 	    PreviousLocomotionMode == AlsLocomotionModeTags::InAir)
 	{
 		if (Settings->Ragdolling.bStartRagdollingOnLand &&
-		    LocomotionState.Velocity.Z <= -Settings->Ragdolling.RagdollingOnLandSpeedThreshold)
+		    LocomotionState.Velocity.Z <= -Settings->Ragdolling.RagdollingOnLandSpeedThreshold &&
+		    IsAllowAutoRagdollOnLanded())
 		{
 			StartRagdolling();
 		}
@@ -984,6 +985,11 @@ FGameplayTag AAlsCharacter::CalculateMaxAllowedGait() const
 	}
 
 	return AlsGaitTags::Running;
+}
+
+bool AAlsCharacter::IsAllowAutoRagdollOnLanded_Implementation() const
+{
+	return true;
 }
 
 FGameplayTag AAlsCharacter::CalculateActualGait(const FGameplayTag& MaxAllowedGait) const

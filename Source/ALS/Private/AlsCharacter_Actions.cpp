@@ -743,6 +743,13 @@ void AAlsCharacter::StartRagdollingImplementation()
 		return;
 	}
 
+	// Clear the character movement mode and set the locomotion action to ragdolling.
+	// TODO I changed here to make sure logic start after locomotion mode changed.
+	GetCharacterMovement()->SetMovementMode(MOVE_None);
+	AlsCharacterMovement->SetMovementModeLocked(true);
+
+	SetLocomotionAction(AlsLocomotionActionTags::Ragdolling);
+	
 	GetMesh()->bUpdateJointsFromAnimation = true; // Required for the flail animation to work properly.
 
 	if (!GetMesh()->IsRunningParallelEvaluation() && GetMesh()->GetBoneSpaceTransforms().Num() > 0)
@@ -811,13 +818,6 @@ void AAlsCharacter::StartRagdollingImplementation()
 	{
 		SetRagdollTargetLocation(PelvisLocation);
 	}
-
-	// Clear the character movement mode and set the locomotion action to ragdolling.
-
-	GetCharacterMovement()->SetMovementMode(MOVE_None);
-	AlsCharacterMovement->SetMovementModeLocked(true);
-
-	SetLocomotionAction(AlsLocomotionActionTags::Ragdolling);
 
 	OnRagdollingStarted();
 }

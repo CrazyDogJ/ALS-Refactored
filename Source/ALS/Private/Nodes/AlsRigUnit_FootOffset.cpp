@@ -2,6 +2,7 @@
 
 #include "Engine/HitResult.h"
 #include "Engine/World.h"
+#include "PhysicsEngine/PhysicsAsset.h"
 #include "Utility/AlsRotation.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(AlsRigUnit_FootOffset)
@@ -24,6 +25,25 @@ FAlsRigUnit_FootOffset_Execute()
 		OffsetSpringState.Reset();
 		OffsetLocationZ = 0.0f;
 		OffsetRotation = FQuat::Identity;
+		
+		if (const auto SkeletalMeshComp = Cast<USkeletalMeshComponent>(ExecuteContext.GetOwningComponent()))
+		{
+			if (SkeletalMeshComp->GetPhysicsAsset())
+			{
+				for (auto Body : SkeletalMeshComp->GetPhysicsAsset()->SkeletalBodySetups)
+				{
+					if (Body->BoneName == CurrentFootName)
+					{
+						if (Body->AggGeom.BoxElems.IsValidIndex(0))
+						{
+							FootBox = Body->AggGeom.BoxElems[0];
+							bFootBoxValid = true;
+							break;
+						}
+					}
+				}
+			}
+		}
 	}
 
 	if (bReset)
@@ -64,14 +84,36 @@ FAlsRigUnit_FootOffset_Execute()
 	const FVector TraceStart{Location.X, Location.Y, TraceDistanceUpward};
 	const FVector TraceEnd{Location.X, Location.Y, -TraceDistanceDownward};
 
+	//TODO : Foot box
 	FHitResult Hit;
-	ExecuteContext.GetWorld()->LineTraceSingleByChannel(Hit, ExecuteContext.ToWorldSpace(TraceStart), ExecuteContext.ToWorldSpace(TraceEnd),
-	                                                    TraceChannel, {__FUNCTION__, true, ExecuteContext.GetOwningActor()});
-
 	auto* DrawInterface{ExecuteContext.GetDrawInterface()};
-	if (DrawInterface != nullptr && bDrawDebug)
+	if (bFootBoxValid)
 	{
-		DrawInterface->DrawLine(FTransform::Identity, TraceStart, TraceEnd, {0.0f, 0.25f, 1.0f}, 1.0f);
+		auto FinalTransform = FTransform(Rotation, Location);
+		auto CalLocation = FinalTransform.TransformPosition(FootBox.Center);
+		auto CalRotation = FinalTransform.TransformRotation(FootBox.Rotation.Quaternion());
+		auto TraceStart_1 = ExecuteContext.ToWorldSpace(CalLocation + FVector(0,0,TraceDistanceDownward));
+		auto TraceEnd_1 = ExecuteContext.ToWorldSpace(CalLocation - FVector(0,0,TraceDistanceDownward));
+		ExecuteContext.GetWorld()->SweepSingleByChannel(Hit,
+			TraceStart_1,
+			TraceEnd_1,
+			ExecuteContext.ToWorldSpace(CalRotation),
+			TraceChannel,
+			FCollisionShape::MakeBox(FVector(FootBox.X, FootBox.Y, FootBox.Z) / 2),
+			{__FUNCTION__, true, ExecuteContext.GetOwningActor()});
+		// Use current foot XY location
+		Hit.ImpactPoint.X = ExecuteContext.ToWorldSpace(Location).X;
+		Hit.ImpactPoint.Y = ExecuteContext.ToWorldSpace(Location).Y;
+	}
+	else
+	{
+		ExecuteContext.GetWorld()->LineTraceSingleByChannel(Hit, ExecuteContext.ToWorldSpace(TraceStart), ExecuteContext.ToWorldSpace(TraceEnd),
+														TraceChannel, {__FUNCTION__, true, ExecuteContext.GetOwningActor()});
+		
+		if (DrawInterface != nullptr && bDrawDebug)
+		{
+			DrawInterface->DrawLine(FTransform::Identity, TraceStart, TraceEnd, {0.0f, 0.25f, 1.0f}, 1.0f);
+		}
 	}
 
 	const auto HitNormal{ExecuteContext.GetToWorldSpaceTransform().InverseTransformVector(Hit.ImpactNormal)};

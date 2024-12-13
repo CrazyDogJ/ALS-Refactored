@@ -251,6 +251,7 @@ void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 		CameraRotation = CameraTargetRotation;
 
 		CameraFieldOfView = bOverrideFieldOfView ? FieldOfViewOverride : Settings->FirstPerson.FieldOfView;
+		CameraOrthoNearClipPlane = Settings->FirstPerson.CameraOrthoNearClipPlane;
 		return;
 	}
 
@@ -338,11 +339,13 @@ void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 	{
 		CameraLocation = CameraFinalLocation;
 		CameraFieldOfView = Settings->ThirdPerson.FieldOfView;
+		CameraOrthoNearClipPlane = Settings->ThirdPerson.CameraOrthoNearClipPlane;
 	}
 	else
 	{
 		CameraLocation = FMath::Lerp(CameraFinalLocation, GetFirstPersonCameraLocation(), FirstPersonOverride);
 		CameraFieldOfView = FMath::Lerp(Settings->ThirdPerson.FieldOfView, Settings->FirstPerson.FieldOfView, FirstPersonOverride);
+		CameraOrthoNearClipPlane = FMath::Lerp(Settings->ThirdPerson.CameraOrthoNearClipPlane, Settings->FirstPerson.CameraOrthoNearClipPlane, FirstPersonOverride);
 	}
 
 	if (bOverrideFieldOfView)

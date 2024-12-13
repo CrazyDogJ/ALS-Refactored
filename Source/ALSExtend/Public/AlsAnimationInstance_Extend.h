@@ -8,6 +8,8 @@
 #include "BlinkMorphState.h"
 #include "AlsAnimationInstance_Extend.generated.h"
 
+class UAlsLinkedAnimationInstance_Extend;
+
 /**
  * 
  */
@@ -16,9 +18,23 @@ class ALSEXTEND_API UAlsAnimationInstance_Extend : public UAlsAnimationInstance
 {
 	GENERATED_BODY()
 
+#pragma region Properties
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Settings)
 	TObjectPtr<UAlsMorphSettings> MorphSettings;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=State, Transient)
+	FBlinkMorphState MorphState;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	TSubclassOf<UAnimInstance> DefaultOverlayAnimBP;
+
+	bool bNeedToTurnInPlace = false;
+#pragma endregion
+
+#pragma region Functions
+public:
+	virtual void NativeThreadSafeUpdateAnimation(float DeltaTime) override;
 
 	/*
 	 * Return random blink delay time base on morph settings.
@@ -33,13 +49,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure)
 	float GetMorphTarget(FName MorphName) const;
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=State, Transient)
-	FBlinkMorphState MorphState;
-	
-	virtual void NativeThreadSafeUpdateAnimation(float DeltaTime) override;
-	
-	bool bNeedToTurnInPlace = false;
-	
 	UFUNCTION(BlueprintCallable)
 	void TurnInPlaceImmediately();
+#pragma endregion 
 };

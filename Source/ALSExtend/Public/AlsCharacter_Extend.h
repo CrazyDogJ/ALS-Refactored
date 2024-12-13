@@ -13,14 +13,18 @@
 #include "SkeletalMeshComponent_Outline.h"
 #include "AlsCharacter_Extend.generated.h"
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FClimbDownParams
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	UPrimitiveComponent* Component;
+
+	UPROPERTY(BlueprintReadOnly)
 	FTransform Transform_A;
+
+	UPROPERTY(BlueprintReadOnly)
 	FTransform Transform_B;
 };
 
@@ -105,6 +109,9 @@ protected:
 public:
 	AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer);
 
+	UFUNCTION(BlueprintCallable)
+	void FixTargetRotation();
+	
 	// Climb down ledge
 	UFUNCTION(BlueprintCallable)
 	void TryClimbDownLedge();
@@ -127,24 +134,38 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure)
 	FVector GetCapsuleBottom();
 	
+	/**
+	* If input is nullptr, set to default overlay class.
+	*/
+	UFUNCTION(BlueprintCallable)
+	void SetCurrentOverlayClass(FName InTag = "Overlay", TSubclassOf<UAnimInstance> InAnimClass = nullptr);
+	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Enter Slide")
 	void K2_EnterSlide();
 
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Exit Slide")
 	void K2_ExitSlide();
 
-	UFUNCTION(BlueprintNativeEvent)
-	bool IsAllowSliding();
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	bool IsAllowSliding() const;
 	
-	UFUNCTION(BlueprintNativeEvent)
-	bool IsAllowGliding();
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	bool IsAllowGliding() const;
 
+	virtual FGameplayTag CalculateMaxAllowedGait() const override;
+	
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	bool IsAllowSprinting() const;
+
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	bool IsAllowRunning() const;
+	
 	/**
 		 * If not EAlsInAirRotationMode::RotateToVelocityOnJump, this bool will control air rotation toward velocity.
 		 * @return Allow to rotate in air by velocity angle or not
 		 */
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
-	bool IsAllowToRotateInAirByVelocity();
+	bool IsAllowToRotateInAirByVelocity() const;
 	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Enter Climb Dash")
 	void K2_EnterClimbDash();

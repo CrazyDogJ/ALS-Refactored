@@ -358,6 +358,10 @@ public:
 	void ServerToggleGlide();
 
 	void ToggleGlideImplementation();
+
+	// Useful in Gameplay Ability
+	UFUNCTION(BlueprintCallable)
+	bool CheckCanGlide();
 	
 	UFUNCTION(BlueprintPure, Category = "Character Movement: Gliding")
 	bool IsGliding() const;

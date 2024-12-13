@@ -289,7 +289,7 @@ FGameplayTag AAlsCharacter_Extend::CalculateActualGait(const FGameplayTag& MaxAl
 		{
 			return AlsGaitTags::Running;
 		}
-		if (MovementComponent_Extend->GetCurrentAcceleration().Length() > 0)
+		if (MovementComponent_Extend->GetCurrentAcceleration().Length() > 0 && DesiredGait == AlsGaitTags::Sprinting)
 		{
 			return AlsGaitTags::Sprinting;
 		}
@@ -432,26 +432,44 @@ AAlsCharacter_Extend::AAlsCharacter_Extend(const FObjectInitializer& ObjectIniti
 	GetMesh()->OnComponentHit.AddDynamic(this, &AAlsCharacter_Extend::OnMeshHit);
 }
 
+void AAlsCharacter_Extend::FixTargetRotation()
+{
+	LocomotionState.TargetYawAngle = GetActorRotation().Yaw;
+	LocomotionState.VelocityYawAngle = GetActorRotation().Yaw;
+	LocomotionState.SmoothTargetYawAngle = GetActorRotation().Yaw;
+	LocomotionState.InputYawAngle = GetControlRotation().Yaw;
+}
+
 void AAlsCharacter_Extend::TryClimbDownLedge()
 {
-	if (!MovementComponent_Extend->bCanClimbDownLedge)
+	if (GetLocalRole() <= ROLE_SimulatedProxy)
 	{
 		return;
 	}
-	
-	MovementComponent_Extend->CacheClimbDownInfo();
+
+	FVector ForwardLoc;
+	FVector DownLoc;
+	FRotator ForwardRot;
+	bool bCanClimbDown;
+	MovementComponent_Extend->CheckClimbDownLedge(ForwardLoc, DownLoc, ForwardRot, bCanClimbDown);
+
+	auto CurrentFloorComp = MovementComponent_Extend->CurrentFloor.HitResult.GetComponent();
+	if (!bCanClimbDown)
+	{
+		return;
+	}
 
 	FTransform TransformA = UKismetMathLibrary::MakeRelativeTransform(
 		FTransform(GetActorRotation(),
-		MovementComponent_Extend->ClimbDownWarpingTarget_Forward, FVector::OneVector),
-		MovementComponent_Extend->ClimbDownCachedComponent->GetComponentTransform());
+		ForwardLoc, FVector::OneVector),
+		CurrentFloorComp->GetComponentTransform());
 
 	FTransform TransformB = UKismetMathLibrary::MakeRelativeTransform(
-		FTransform(MovementComponent_Extend->ClimbDownWarpingRotation_Down,
-		MovementComponent_Extend->ClimbDownWarpingTarget_Down, FVector::OneVector),
-		MovementComponent_Extend->ClimbDownCachedComponent->GetComponentTransform());
+		FTransform(ForwardRot,
+		DownLoc, FVector::OneVector),
+		CurrentFloorComp->GetComponentTransform());
 
-	auto ClimbDownParams = FClimbDownParams(MovementComponent_Extend->ClimbDownCachedComponent, TransformA, TransformB);
+	auto ClimbDownParams = FClimbDownParams(CurrentFloorComp, TransformA, TransformB);
 
 	if (GetLocalRole() >= ROLE_Authority)
 	{
@@ -468,11 +486,8 @@ void AAlsCharacter_Extend::TryClimbDownLedge()
 
 void AAlsCharacter_Extend::ServerClimbDownLedge_Implementation(const FClimbDownParams& Params)
 {
-	if (MovementComponent_Extend->bCanClimbDownLedge)
-	{
-		MulticastClimbDownLedge(Params);
-		ForceNetUpdate();
-	}
+	MulticastClimbDownLedge(Params);
+	ForceNetUpdate();
 }
 
 void AAlsCharacter_Extend::MulticastClimbDownLedge_Implementation(const FClimbDownParams& Params)
@@ -500,6 +515,8 @@ void AAlsCharacter_Extend::OnClimbDownMontageBlendOut(UAnimMontage* Montage, boo
 
 void AAlsCharacter_Extend::ClimbDownLedgeImplementation(const FClimbDownParams& Params)
 {
+	UE_LOG(LogTemp, Warning, TEXT("Climb down params : Component : %s, Transform_A : %s, Transform_B : %s"), *Params.Component->GetName(), *Params.Transform_A.ToString(), *Params.Transform_B.ToString())
+
 	if (!RuntimeMovementSettings_Extend)
 	{
 		return;
@@ -532,17 +549,58 @@ FVector AAlsCharacter_Extend::GetCapsuleBottom()
 	return GetActorLocation() - FVector(0,0,GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 }
 
-bool AAlsCharacter_Extend::IsAllowToRotateInAirByVelocity_Implementation()
+void AAlsCharacter_Extend::SetCurrentOverlayClass(FName InTag, TSubclassOf<UAnimInstance> InAnimClass)
 {
-	return false;
+	if (InAnimClass != nullptr)
+	{
+		GetMesh()->LinkAnimGraphByTag(InTag, InAnimClass);
+	}
+	else if (auto AnimInstance_Extend = Cast<UAlsAnimationInstance_Extend>(GetMesh()->GetAnimInstance()))
+	{
+		GetMesh()->LinkAnimGraphByTag(InTag, AnimInstance_Extend->DefaultOverlayAnimBP);
+	}
 }
 
-bool AAlsCharacter_Extend::IsAllowGliding_Implementation()
+FGameplayTag AAlsCharacter_Extend::CalculateMaxAllowedGait() const
+{
+	if (DesiredGait == AlsGaitTags::Running)
+	{
+		return IsAllowRunning() ? DesiredGait : AlsGaitTags::Walking;
+	}
+	
+	if (DesiredGait == AlsGaitTags::Sprinting)
+	{
+		return IsAllowSprinting() ? DesiredGait : AlsGaitTags::Running;
+	}
+	
+	return AlsGaitTags::Walking;
+}
+
+bool AAlsCharacter_Extend::IsAllowRunning_Implementation() const
 {
 	return true;
 }
 
-bool AAlsCharacter_Extend::IsAllowSliding_Implementation()
+bool AAlsCharacter_Extend::IsAllowSprinting_Implementation() const
+{
+	if (GetMovementComponent()->IsSwimming())
+	{
+		return true;
+	}
+	return Super::CanSprint();
+}
+
+bool AAlsCharacter_Extend::IsAllowToRotateInAirByVelocity_Implementation() const
+{
+	return false;
+}
+
+bool AAlsCharacter_Extend::IsAllowGliding_Implementation() const
+{
+	return true;
+}
+
+bool AAlsCharacter_Extend::IsAllowSliding_Implementation() const
 {
 	return true;
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PhysicsEngine/BoxElem.h"
 #include "Units/RigUnit.h"
 #include "Utility/AlsMath.h"
 #include "AlsRigUnit_FootOffset.generated.h"
@@ -10,6 +11,9 @@ struct ALS_API FAlsRigUnit_FootOffset : public FRigUnitMutable
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(Transient, Meta= (Input))
+	FName CurrentFootName;
+	
 	UPROPERTY(Transient, Meta = (Input))
 	FVector Location{ForceInit};
 
@@ -43,6 +47,12 @@ public:
 	UPROPERTY(Transient)
 	bool bInitialized{false};
 
+	UPROPERTY(Transient)
+	FKBoxElem FootBox;
+
+	UPROPERTY(Transient)
+	bool bFootBoxValid = false;
+	
 	UPROPERTY(Transient, Meta = (Output))
 	float OffsetTargetLocationZ{0.0f};
 

@@ -304,7 +304,10 @@ public:
 
 	virtual void RefreshGait();
 
-	FGameplayTag CalculateMaxAllowedGait() const;
+	virtual FGameplayTag CalculateMaxAllowedGait() const;
+
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	bool IsAllowAutoRagdollOnLanded() const;
 protected:
 	void SetGait(const FGameplayTag& NewGait);
 
