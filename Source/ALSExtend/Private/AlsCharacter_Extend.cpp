@@ -418,7 +418,7 @@ UAbilitySystemComponent* AAlsCharacter_Extend::GetAbilitySystemComponent() const
 
 AAlsCharacter_Extend::AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UAlsCharacterMovementComponent_Extend>(ACharacter::CharacterMovementComponentName)
-		.SetDefaultSubobjectClass<USkeletalMeshComponent_Outline>(ACharacter::MeshComponentName))
+		.SetDefaultSubobjectClass<USkeletalMeshComponent_Outline>(MeshComponentName))
 {
 	Camera = CreateDefaultSubobject<UAlsCameraComponent>(FName{TEXTVIEW("Camera")});
 	Camera->SetupAttachment(GetMesh());
@@ -982,5 +982,17 @@ void AAlsCharacter_Extend::OnGaitChanged_Implementation(const FGameplayTag& Prev
 	if (Gait == AlsGaitTags::Sprinting)
 	{
 		MovementComponent_Extend->TryClimbDashing();
+	}
+}
+
+void AAlsCharacter_Extend::RefreshVelocityYawAngle()
+{
+	if (LocomotionMode == AlsLocomotionModeTags::FreeClimbing)
+	{
+		LocomotionState.VelocityYawAngle = UE_REAL_TO_FLOAT(GetActorRotation().Yaw);
+	}
+	else
+	{
+		Super::RefreshVelocityYawAngle();
 	}
 }

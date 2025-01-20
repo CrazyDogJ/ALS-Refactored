@@ -161,6 +161,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ALS|Character", Meta = (AutoCreateRefTerm = "NewViewMode"))
 	void SetViewMode(const FGameplayTag& NewViewMode);
 
+	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
+	void OnViewModeChanged(const FGameplayTag& PreviousViewMode);
+	
 private:
 	void SetViewMode(const FGameplayTag& NewViewMode, bool bSendRpc);
 
@@ -349,6 +352,8 @@ public:
 
 	void SetLocomotionAction(const FGameplayTag& NewLocomotionAction);
 
+	bool IsRootMotionMontagePlaying() const;
+	
 protected:
 	virtual void NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction);
 
@@ -395,6 +400,8 @@ private:
 public:
 	const FAlsLocomotionState& GetLocomotionState() const;
 
+	virtual void RefreshVelocityYawAngle();
+	
 private:
 	void SetDesiredVelocityYawAngle(float NewVelocityYawAngle);
 
@@ -579,6 +586,9 @@ protected:
 
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
 	void OnRagdollingEnded();
+
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	void OnRagdollShouldAddForce();
 
 private:
 	void SetRagdollTargetLocation(const FVector& NewTargetLocation);

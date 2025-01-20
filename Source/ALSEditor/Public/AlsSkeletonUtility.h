@@ -28,6 +28,9 @@ public:
 	static void AddAnimationCurves(USkeleton* Skeleton, const TArray<FName>& CurveNames);
 
 	UFUNCTION(BlueprintCallable, Category = "ALS|Skeleton Utility")
+	static void FixMorphAnimationCurves(USkeletalMesh* SkeletalMesh);
+	
+	UFUNCTION(BlueprintCallable, Category = "ALS|Skeleton Utility")
 	static void AddOrReplaceSlot(USkeleton* Skeleton, FName SlotName, FName GroupName);
 
 	UFUNCTION(BlueprintCallable, Category = "ALS|Skeleton Utility", Meta = (AutoCreateRefTerm = "SourceBoneName, TargetBoneName"))

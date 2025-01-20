@@ -25,6 +25,9 @@ struct ALS_API FAlsMantlingParameters
 	TWeakObjectPtr<UPrimitiveComponent> TargetPrimitive;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
+	FName SocketName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	FVector_NetQuantize100 TargetRelativeLocation{ForceInit};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")

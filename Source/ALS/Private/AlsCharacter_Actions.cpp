@@ -409,6 +409,7 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 
 	FAlsMantlingParameters Parameters;
 
+	Parameters.SocketName = DownwardTraceHit.BoneName;
 	Parameters.TargetPrimitive = TargetPrimitive;
 	Parameters.MantlingHeight = UE_REAL_TO_FLOAT((TargetLocation.Z - CapsuleBottomLocation.Z) / CapsuleScale);
 
@@ -525,7 +526,7 @@ void AAlsCharacter::StartMantlingImplementation(const FAlsMantlingParameters& Pa
 	GetCharacterMovement()->SetMovementMode(MOVE_Custom);
 	AlsCharacterMovement->SetMovementModeLocked(true);
 
-	GetCharacterMovement()->SetBase(Parameters.TargetPrimitive.Get());
+	GetCharacterMovement()->SetBase(Parameters.TargetPrimitive.Get(), Parameters.SocketName);
 
 	// Apply mantling root motion.
 
@@ -824,6 +825,14 @@ void AAlsCharacter::StartRagdollingImplementation()
 
 void AAlsCharacter::OnRagdollingStarted_Implementation() {}
 
+void AAlsCharacter::OnRagdollShouldAddForce_Implementation()
+{
+	// Default by view rotation.
+	FVector RagdollJumpForce = GetViewState().Rotation.Quaternion().GetForwardVector().GetSafeNormal2D() * 5000.0f;
+	RagdollJumpForce.Z = 5000.0f;
+	GetMesh()->AddForceToAllBodiesBelow(RagdollJumpForce, UAlsConstants::PelvisBoneName(), true);
+}
+
 void AAlsCharacter::SetRagdollTargetLocation(const FVector& NewTargetLocation)
 {
 	if (RagdollTargetLocation != NewTargetLocation)
@@ -1050,6 +1059,32 @@ void AAlsCharacter::StopRagdollingImplementation()
 		return;
 	}
 
+	// Stop ragdoll fixing
+	auto Capsule = GetCapsuleComponent();
+	FVector CapsuleBottom = Capsule->GetComponentLocation() + FVector(0,0,-Capsule->GetScaledCapsuleHalfHeight());
+	FHitResult RagdollHitCheck;
+	const FVector TraceEnd = CapsuleBottom + FVector(0,0,GetDefaultHalfHeight() * 2);
+	GetWorld()->LineTraceSingleByChannel(RagdollHitCheck, CapsuleBottom, TraceEnd,
+		GetCapsuleComponent()->GetCollisionObjectType(),
+		{FName(), true, this});
+		
+	if (RagdollHitCheck.bBlockingHit)
+	{
+		float CrouchHalfHeight = Cast<UCharacterMovementComponent>(GetMovementComponent())->GetCrouchedHalfHeight();
+		const FVector TraceEnd_Crouch = CapsuleBottom + FVector(0,0,CrouchHalfHeight * 2);
+		GetWorld()->LineTraceSingleByChannel(RagdollHitCheck, CapsuleBottom, TraceEnd_Crouch,
+			GetCapsuleComponent()->GetCollisionObjectType(),
+			{FName(), true, this});
+		if (RagdollHitCheck.bBlockingHit)
+		{
+			// If cant get up, we will try to ragdoll out by blueprint native function.
+			OnRagdollShouldAddForce();
+			return;
+		}
+		SetDesiredStance(AlsStanceTags::Crouching);
+	}
+	// Stop ragdoll fixing end
+	
 	auto& FinalRagdollPose{AnimationInstance->SnapshotFinalRagdollPose()};
 
 	const auto PelvisTransform{GetMesh()->GetSocketTransform(UAlsConstants::PelvisBoneName())};
@@ -1060,8 +1095,10 @@ void AAlsCharacter::StopRagdollingImplementation()
 	GetMesh()->bUpdateJointsFromAnimation = false;
 
 	GetMesh()->SetSimulatePhysics(false);
-	GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	GetMesh()->SetCollisionObjectType(ECC_Pawn);
+	auto DefaultMeshCollisionEnabled = GetClass()->GetDefaultObject<AAlsCharacter>()->GetMesh()->GetCollisionEnabled();
+	GetMesh()->SetCollisionEnabled(DefaultMeshCollisionEnabled);
+	auto DefaultMeshObjectType = GetClass()->GetDefaultObject<AAlsCharacter>()->GetMesh()->GetCollisionObjectType();
+	GetMesh()->SetCollisionObjectType(DefaultMeshObjectType);
 
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 

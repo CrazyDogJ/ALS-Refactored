@@ -104,6 +104,7 @@ protected:
 	virtual bool RefreshCustomInAirRotation(float DeltaTime) override;
 	virtual void RefreshGait() override;
 	virtual void OnGaitChanged_Implementation(const FGameplayTag& PreviousGait) override;
+	virtual void RefreshVelocityYawAngle() override;
 	void RefreshSwimmingRotation(float DeltaTime);
 	void RefreshGlidingRotation(float DeltaTime);
 public:

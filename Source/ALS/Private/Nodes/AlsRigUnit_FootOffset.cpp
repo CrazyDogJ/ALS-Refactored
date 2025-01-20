@@ -83,37 +83,15 @@ FAlsRigUnit_FootOffset_Execute()
 
 	const FVector TraceStart{Location.X, Location.Y, TraceDistanceUpward};
 	const FVector TraceEnd{Location.X, Location.Y, -TraceDistanceDownward};
-
-	//TODO : Foot box
+	
 	FHitResult Hit;
 	auto* DrawInterface{ExecuteContext.GetDrawInterface()};
-	if (bFootBoxValid)
-	{
-		auto FinalTransform = FTransform(Rotation, Location);
-		auto CalLocation = FinalTransform.TransformPosition(FootBox.Center);
-		auto CalRotation = FinalTransform.TransformRotation(FootBox.Rotation.Quaternion());
-		auto TraceStart_1 = ExecuteContext.ToWorldSpace(CalLocation + FVector(0,0,TraceDistanceDownward));
-		auto TraceEnd_1 = ExecuteContext.ToWorldSpace(CalLocation - FVector(0,0,TraceDistanceDownward));
-		ExecuteContext.GetWorld()->SweepSingleByChannel(Hit,
-			TraceStart_1,
-			TraceEnd_1,
-			ExecuteContext.ToWorldSpace(CalRotation),
-			TraceChannel,
-			FCollisionShape::MakeBox(FVector(FootBox.X, FootBox.Y, FootBox.Z) / 2),
-			{__FUNCTION__, true, ExecuteContext.GetOwningActor()});
-		// Use current foot XY location
-		Hit.ImpactPoint.X = ExecuteContext.ToWorldSpace(Location).X;
-		Hit.ImpactPoint.Y = ExecuteContext.ToWorldSpace(Location).Y;
-	}
-	else
-	{
-		ExecuteContext.GetWorld()->LineTraceSingleByChannel(Hit, ExecuteContext.ToWorldSpace(TraceStart), ExecuteContext.ToWorldSpace(TraceEnd),
+	ExecuteContext.GetWorld()->LineTraceSingleByChannel(Hit, ExecuteContext.ToWorldSpace(TraceStart), ExecuteContext.ToWorldSpace(TraceEnd),
 														TraceChannel, {__FUNCTION__, true, ExecuteContext.GetOwningActor()});
-		
-		if (DrawInterface != nullptr && bDrawDebug)
-		{
-			DrawInterface->DrawLine(FTransform::Identity, TraceStart, TraceEnd, {0.0f, 0.25f, 1.0f}, 1.0f);
-		}
+	
+	if (DrawInterface != nullptr && bDrawDebug)
+	{
+		DrawInterface->DrawLine(FTransform::Identity, TraceStart, TraceEnd, {0.0f, 0.25f, 1.0f}, 1.0f);
 	}
 
 	const auto HitNormal{ExecuteContext.GetToWorldSpaceTransform().InverseTransformVector(Hit.ImpactNormal)};
@@ -138,6 +116,45 @@ FAlsRigUnit_FootOffset_Execute()
 		if (DrawInterface != nullptr && bDrawDebug && Hit.bBlockingHit)
 		{
 			DrawInterface->DrawPoint(FTransform::Identity, HitLocation, 12.0f, {0.0f, 0.75f, 1.0f});
+		}
+
+		if (bFootBoxValid)
+		{
+			const auto FinalTransform = FTransform(OffsetTargetRotation * Rotation, Location);
+			const auto CalLocation = FinalTransform.TransformPosition(FootBox.Center);
+			const auto CalRotation = FinalTransform.TransformRotation(FootBox.Rotation.Quaternion());
+			const auto FootBoxTraceStart = ExecuteContext.ToWorldSpace(CalLocation + FVector(0,0,TraceDistanceUpward));
+			const auto FootBoxTraceEnd = ExecuteContext.ToWorldSpace(CalLocation + FVector(0,0,-TraceDistanceDownward));
+			const auto FootBoxTraceRotation = ExecuteContext.ToWorldSpace(CalRotation);
+			FHitResult FootBoxHitResult;
+			ExecuteContext.GetWorld()->SweepSingleByChannel(FootBoxHitResult,
+				FootBoxTraceStart,
+				FootBoxTraceEnd,
+				FootBoxTraceRotation,
+				TraceChannel,
+				FCollisionShape::MakeBox(FVector(FootBox.X, FootBox.Y, FootBox.Z) / 2),
+				{__FUNCTION__, true, ExecuteContext.GetOwningActor()});
+
+			// Draw foot box
+			if (DrawInterface != nullptr && bDrawDebug)
+			{
+				DrawInterface->DrawBox(FTransform::Identity, FTransform(CalRotation, CalLocation, FVector(FootBox.X, FootBox.Y, FootBox.Z)), FColor::Green, 1.0f);
+				//if (FootBoxHitResult.IsValidBlockingHit())
+				//{
+				//	DrawInterface->DrawLine(FTransform::Identity, ExecuteContext.ToVMSpace(FootBoxHitResult.Location), ExecuteContext.ToVMSpace(FootBoxHitResult.ImpactPoint + FootBoxHitResult.ImpactNormal * 50), FColor::Green, 1.0f);
+				//}
+			}
+			
+			if (FootBoxHitResult.IsValidBlockingHit())
+			{
+				// REMEMBER! Foot Box X is foot height!!!
+				FVector AdjustedCenter = (OffsetTargetRotation * Rotation).RotateVector(FootBox.Center);
+				FVector RevertLocation = FootBoxHitResult.Location - AdjustedCenter;
+				RevertLocation.Z = RevertLocation.Z - FootBox.X;
+				
+				const auto FootBoxHeightOffset{SlopeAngleCos > UE_SMALL_NUMBER ? FootBox.X / SlopeAngleCos - FootBox.X : 0.0f};
+				OffsetTargetLocationZ = UE_REAL_TO_FLOAT(ExecuteContext.ToVMSpace(RevertLocation).Z + FootBoxHeightOffset);
+			}
 		}
 	}
 	else

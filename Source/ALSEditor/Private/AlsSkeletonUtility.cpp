@@ -58,6 +58,21 @@ void UAlsSkeletonUtility::AddAnimationCurves(USkeleton* Skeleton, const TArray<F
 	}
 }
 
+void UAlsSkeletonUtility::FixMorphAnimationCurves(USkeletalMesh* SkeletalMesh)
+{
+	if (!ALS_ENSURE(IsValid(SkeletalMesh)))
+	{
+		return;
+	}
+
+	TArray<FString> Names;
+	for (UMorphTarget* MorphTarget : SkeletalMesh->GetMorphTargets())
+	{
+		SkeletalMesh->GetSkeleton()->AddCurveMetaData(MorphTarget->GetFName());
+		SkeletalMesh->GetSkeleton()->GetCurveMetaData(MorphTarget->GetFName())->Type.bMorphtarget = true;
+	}
+}
+
 void UAlsSkeletonUtility::AddOrReplaceSlot(USkeleton* Skeleton, FName SlotName, FName GroupName)
 {
 	if (!ALS_ENSURE(IsValid(Skeleton)))

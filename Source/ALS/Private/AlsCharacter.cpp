@@ -405,7 +405,7 @@ void AAlsCharacter::RefreshMeshProperties() const
 		}
 	}
 
-	if (!bMeshIsTicking)
+	if (!bMeshIsTicking && AnimationInstance.IsValid())
 	{
 		AnimationInstance->MarkPendingUpdate();
 	}
@@ -449,10 +449,13 @@ void AAlsCharacter::SetViewMode(const FGameplayTag& NewViewMode, const bool bSen
 		return;
 	}
 
+	const auto PreViewMode = ViewMode;
 	ViewMode = NewViewMode;
 
 	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ViewMode, this)
 
+	OnViewModeChanged(PreViewMode);
+	
 	if (bSendRpc)
 	{
 		if (GetLocalRole() >= ROLE_Authority)
@@ -521,12 +524,14 @@ void AAlsCharacter::NotifyLocomotionModeChanged(const FGameplayTag& PreviousLoco
 	{
 		if (Settings->Ragdolling.bStartRagdollingOnLand &&
 		    LocomotionState.Velocity.Z <= -Settings->Ragdolling.RagdollingOnLandSpeedThreshold &&
-		    IsAllowAutoRagdollOnLanded())
+		    IsAllowAutoRagdollOnLanded() &&
+		    !HasAnyRootMotion())
 		{
 			StartRagdolling();
 		}
 		else if (Settings->Rolling.bStartRollingOnLand &&
-		         LocomotionState.Velocity.Z <= -Settings->Rolling.RollingOnLandSpeedThreshold)
+		         LocomotionState.Velocity.Z <= -Settings->Rolling.RollingOnLandSpeedThreshold &&
+		         !HasAnyRootMotion())
 		{
 			static constexpr auto PlayRate{1.3f};
 
@@ -578,6 +583,11 @@ void AAlsCharacter::SetDesiredAiming(const bool bNewDesiredAiming)
 
 void AAlsCharacter::SetDesiredAiming(const bool bNewDesiredAiming, const bool bSendRpc)
 {
+	if (GetController()->IsMoveInputIgnored())
+	{
+		return;
+	}
+	
 	if (bDesiredAiming == bNewDesiredAiming || GetLocalRole() < ROLE_AutonomousProxy)
 	{
 		return;
@@ -774,6 +784,11 @@ void AAlsCharacter::SetDesiredStance(const FGameplayTag& NewDesiredStance)
 
 void AAlsCharacter::SetDesiredStance(const FGameplayTag& NewDesiredStance, const bool bSendRpc)
 {
+	if (GetController()->IsMoveInputIgnored())
+	{
+		return;
+	}
+	
 	if (DesiredStance == NewDesiredStance || GetLocalRole() < ROLE_AutonomousProxy)
 	{
 		return;
@@ -1104,6 +1119,19 @@ void AAlsCharacter::SetLocomotionAction(const FGameplayTag& NewLocomotionAction)
 	}
 }
 
+bool AAlsCharacter::IsRootMotionMontagePlaying() const
+{
+	for (auto MontageInstance : AnimationInstance->MontageInstances)
+	{
+		if (!MontageInstance->IsRootMotionDisabled() && MontageInstance->bPlaying && MontageInstance->Montage != nullptr)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void AAlsCharacter::NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction)
 {
 	if (!LocomotionAction.IsValid())
@@ -1395,10 +1423,7 @@ void AAlsCharacter::RefreshLocomotion()
 
 	LocomotionState.bHasVelocity = LocomotionState.Speed >= HasSpeedThreshold;
 
-	if (LocomotionState.bHasVelocity)
-	{
-		LocomotionState.VelocityYawAngle = UE_REAL_TO_FLOAT(UAlsVector::DirectionToAngleXY(LocomotionState.Velocity));
-	}
+	RefreshVelocityYawAngle();
 
 	if (GetLocalRole() >= ROLE_AutonomousProxy)
 	{
@@ -1455,6 +1480,14 @@ void AAlsCharacter::RefreshLocomotionLate()
 	LocomotionState.bResetAimingLimit = !LocomotionState.bAimingLimitAppliedThisFrame;
 }
 
+void AAlsCharacter::RefreshVelocityYawAngle()
+{
+	if (LocomotionState.bHasVelocity && !IsRootMotionMontagePlaying())
+	{
+		LocomotionState.VelocityYawAngle = UE_REAL_TO_FLOAT(UAlsVector::DirectionToAngleXY(LocomotionState.Velocity));
+	}
+}
+
 void AAlsCharacter::ServerSetInitialVelocityYawAngle_Implementation(const float NewVelocityYawAngle)
 {
 	MulticastSetInitialVelocityYawAngle(NewVelocityYawAngle);
@@ -1473,7 +1506,8 @@ void AAlsCharacter::MulticastSetInitialVelocityYawAngle_Implementation(const flo
 void AAlsCharacter::Jump()
 {
 	if (Stance == AlsStanceTags::Standing && !LocomotionAction.IsValid() &&
-	    LocomotionMode == AlsLocomotionModeTags::Grounded)
+	    LocomotionMode == AlsLocomotionModeTags::Grounded &&
+	    !GetController()->IsMoveInputIgnored())
 	{
 		Super::Jump();
 	}

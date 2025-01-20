@@ -16,7 +16,9 @@ public class ALSExtend : ModuleRules
                 "MotionWarping", 
                 "GameplayAbilities",
                 "GameplayTags",
-                "AIModule"
+                "AIModule",
+                "RigVM",
+                "ControlRig"
             }
         );
 
