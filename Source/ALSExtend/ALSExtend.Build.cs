@@ -18,7 +18,8 @@ public class ALSExtend : ModuleRules
                 "GameplayTags",
                 "AIModule",
                 "RigVM",
-                "ControlRig"
+                "ControlRig",
+                "PhysicsCore"
             }
         );
 

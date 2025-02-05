@@ -68,7 +68,15 @@ void AAlsCharacter_Extend::ApplyDesiredStance()
 void AAlsCharacter_Extend::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-		
+
+	// Physical material support.
+	if (CurrentPhysicalMaterial != GetCharacterMovement()->CurrentFloor.HitResult.PhysMaterial)
+	{
+		const auto PrePM = CurrentPhysicalMaterial;
+		CurrentPhysicalMaterial = GetCharacterMovement()->CurrentFloor.HitResult.PhysMaterial;
+		OnPhysicalMaterialChanged(PrePM.Get());
+	}
+	
 	RefreshSwimmingRotation(DeltaSeconds);
 	RefreshGlidingRotation(DeltaSeconds);
 
@@ -98,12 +106,15 @@ void AAlsCharacter_Extend::Tick(float DeltaSeconds)
 	{
 		if (auto AICon = Cast<AAIController>(GetController()))
 		{
-			AICon->SetFocalPoint(LookTargetComponent->GetSocketLocation(LookTargetSocket));
+			AICon->SetFocalPoint(LookTargetComponent->GetSocketLocation(LookTargetSocket) + LookTargetOffset);
 		}
 		else if (GetController() && Camera)
 		{
-			GetController()->SetControlRotation(UKismetMathLibrary::FindLookAtRotation(
-				Camera->GetThirdPersonTraceStartLocation(), LookTargetComponent->GetSocketLocation(LookTargetSocket)));
+			auto InterpRotation = UKismetMathLibrary::RInterpTo(GetController()->GetControlRotation(),
+				UKismetMathLibrary::FindLookAtRotation(Camera->GetThirdPersonTraceStartLocation(), LookTargetComponent->GetSocketLocation(LookTargetSocket) + LookTargetOffset),
+				DeltaSeconds, LookTargetInterpSpeed);
+			
+			GetController()->SetControlRotation(InterpRotation);
 		}
 	}
 }
@@ -372,6 +383,15 @@ bool AAlsCharacter_Extend::IsRagdollingAllowedToStop() const
 	return LocomotionAction == AlsLocomotionActionTags::Ragdolling && (RagdollingState.bGrounded || MovementComponent_Extend->GetWaterInfoForSwim().WaterBodyIdx >= 0);
 }
 
+bool AAlsCharacter_Extend::IsRollingAllowedToStart(const UAnimMontage* Montage) const
+{
+	if (IsAllowRolling())
+	{
+		return Super::IsRollingAllowedToStart(Montage);
+	}
+	return false;
+}
+
 void AAlsCharacter_Extend::PostInitializeComponents()
 {
 	// Make sure the mesh and animation blueprint are ticking after the character so they can access the most up-to-date character state.
@@ -428,7 +448,8 @@ AAlsCharacter_Extend::AAlsCharacter_Extend(const FObjectInitializer& ObjectIniti
 	MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(FName{TEXTVIEW("MotionWarping")});
 	GetCapsuleComponent()->SetNotifyRigidBodyCollision(true);
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AAlsCharacter_Extend::OnCapsuleHit);
-
+	GetCapsuleComponent()->bReturnMaterialOnMove = true;
+	
 	GetMesh()->OnComponentHit.AddDynamic(this, &AAlsCharacter_Extend::OnMeshHit);
 }
 
@@ -538,10 +559,11 @@ void AAlsCharacter_Extend::ClimbDownLedgeImplementation(const FClimbDownParams& 
 	SetLocomotionAction(AlsLocomotionActionTags::ClimbDownLedge);
 }
 
-void AAlsCharacter_Extend::SetLookCompAndSocket(UPrimitiveComponent* InComp, const FName& SocketName)
+void AAlsCharacter_Extend::SetLookCompAndSocket(UPrimitiveComponent* InComp, const FName& SocketName, const FVector& TargetOffset)
 {
 	LookTargetComponent = InComp;
-	LookTargetSocket = SocketName;
+	LookTargetSocket = !InComp ? FName() : SocketName;
+	LookTargetOffset = !InComp ? FVector::Zero() : TargetOffset;
 }
 
 FVector AAlsCharacter_Extend::GetCapsuleBottom()
@@ -559,6 +581,11 @@ void AAlsCharacter_Extend::SetCurrentOverlayClass(FName InTag, TSubclassOf<UAnim
 	{
 		GetMesh()->LinkAnimGraphByTag(InTag, AnimInstance_Extend->DefaultOverlayAnimBP);
 	}
+}
+
+bool AAlsCharacter_Extend::IsAllowRolling_Implementation() const
+{
+	return true;
 }
 
 FGameplayTag AAlsCharacter_Extend::CalculateMaxAllowedGait() const

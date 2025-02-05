@@ -1121,11 +1121,14 @@ void AAlsCharacter::SetLocomotionAction(const FGameplayTag& NewLocomotionAction)
 
 bool AAlsCharacter::IsRootMotionMontagePlaying() const
 {
-	for (auto MontageInstance : AnimationInstance->MontageInstances)
+	for (const auto MontageInstance : AnimationInstance->MontageInstances)
 	{
-		if (!MontageInstance->IsRootMotionDisabled() && MontageInstance->bPlaying && MontageInstance->Montage != nullptr)
+		if (!MontageInstance->IsRootMotionDisabled() && MontageInstance->bPlaying)
 		{
-			return true;
+			if (MontageInstance->Montage)
+			{
+				return MontageInstance->Montage->HasRootMotion();
+			}
 		}
 	}
 

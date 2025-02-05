@@ -1,9 +1,12 @@
 #include "AlsSkeletonUtility.h"
 
+#include "SkeletalMeshEditorSubsystem.h"
 #include "Animation/BlendProfile.h"
 #include "Engine/SkeletalMeshSocket.h"
 #include "Logging/MessageLog.h"
 #include "Misc/UObjectToken.h"
+#include "PhysicsEngine/PhysicsAsset.h"
+#include "PhysicsEngine/PhysicsConstraintTemplate.h"
 #include "Utility/AlsLog.h"
 #include "Utility/AlsMacros.h"
 
@@ -326,6 +329,100 @@ void UAlsSkeletonUtility::SetBoneRetargetingMode(USkeleton* Skeleton, const FNam
 
 	Skeleton->Modify();
 	Skeleton->SetBoneTranslationRetargetingMode(BoneIndex, RetargetingMode, bIncludeDescendants);
+}
+
+void UAlsSkeletonUtility::CopyPhysicsAsset(UPhysicsAsset* RefPhysicsAsset, USkeletalMesh* ModifyingSkeletalMesh, bool bCopyBodies, bool bCopyConstraint)
+{
+	if ((!bCopyBodies && !bCopyConstraint) || !RefPhysicsAsset || !ALS_ENSURE(IsValid(ModifyingSkeletalMesh)))
+	{
+		return;
+	}
+
+	if (!ModifyingSkeletalMesh->GetPhysicsAsset())
+	{
+		USkeletalMeshEditorSubsystem::CreatePhysicsAsset(ModifyingSkeletalMesh);
+	}
+
+	if (const auto PA = ModifyingSkeletalMesh->GetPhysicsAsset())
+	{
+		PA->Modify();
+		if (bCopyBodies)
+		{
+			for (USkeletalBodySetup* SourceBodySetup : RefPhysicsAsset->SkeletalBodySetups)
+			{
+				if (!SourceBodySetup)
+					continue;
+				
+				auto Found = PA->SkeletalBodySetups.FindByPredicate([&SourceBodySetup](const TObjectPtr<USkeletalBodySetup>& BodySetup)
+					{
+						return BodySetup->BoneName == SourceBodySetup->BoneName;
+					});
+
+				if (Found)
+				{
+					Found->Get()->CopyBodyPropertiesFrom(SourceBodySetup);
+				}
+				else
+				{
+					USkeletalBodySetup* NewBodySetup = NewObject<USkeletalBodySetup>(PA);
+					NewBodySetup->CopyBodyPropertiesFrom(SourceBodySetup);
+					NewBodySetup->BoneName = SourceBodySetup->BoneName;
+					PA->SkeletalBodySetups.Add(NewBodySetup);
+				}
+			}
+		}
+		if (bCopyConstraint)
+		{
+			for (UPhysicsConstraintTemplate* SourceConstraint : RefPhysicsAsset->ConstraintSetup)
+			{
+				if (!SourceConstraint)
+					continue;
+
+				auto Found = PA->ConstraintSetup.FindByPredicate([&](const TObjectPtr<class UPhysicsConstraintTemplate>& Constraint)
+					{
+						return Constraint->DefaultInstance.ConstraintBone1 == SourceConstraint->DefaultInstance.ConstraintBone1;
+					});
+				
+				if (Found)
+				{
+					PA->ConstraintSetup.Remove(Found->Get());
+				}
+				
+				UPhysicsConstraintTemplate* NewConstraint = NewObject<UPhysicsConstraintTemplate>(PA);
+				NewConstraint->DefaultInstance.CopyConstraintParamsFrom(&SourceConstraint->DefaultInstance);
+				
+				NewConstraint->DefaultInstance.ConstraintBone1 = SourceConstraint->DefaultInstance.ConstraintBone1;
+				NewConstraint->DefaultInstance.ConstraintBone2 = SourceConstraint->DefaultInstance.ConstraintBone2;
+				
+				FTransform ChildBoneTransform = ModifyingSkeletalMesh->GetRefSkeleton().GetRefBonePose()[ModifyingSkeletalMesh->GetRefSkeleton().FindBoneIndex(SourceConstraint->DefaultInstance.ConstraintBone1)];
+				
+				NewConstraint->DefaultInstance.SetRefFrame(EConstraintFrame::Frame1, SourceConstraint->DefaultInstance.GetRefFrame(EConstraintFrame::Frame1));
+				NewConstraint->DefaultInstance.SetRefFrame(EConstraintFrame::Frame2, SourceConstraint->DefaultInstance.GetRefFrame(EConstraintFrame::Frame2));
+				NewConstraint->DefaultInstance.SetRefPosition(EConstraintFrame::Frame1, FVector::Zero());
+				NewConstraint->DefaultInstance.SetRefPosition(EConstraintFrame::Frame2, ChildBoneTransform.GetLocation());
+				PA->ConstraintSetup.Add(NewConstraint);
+			}
+		}
+		PA->MarkPackageDirty();
+	}
+}
+
+void UAlsSkeletonUtility::RemoveInvalidConstraint(UPhysicsAsset* PA)
+{
+	if (!PA)
+	{
+		return;
+	}
+
+	PA->Modify();
+	for (auto Constraint : PA->ConstraintSetup)
+	{
+		if (!Constraint->DefaultInstance.IsValidConstraintInstance())
+		{
+			PA->ConstraintSetup.Remove(Constraint);
+		}
+	}
+	PA->MarkPackageDirty();
 }
 
 #undef LOCTEXT_NAMESPACE

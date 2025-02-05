@@ -166,6 +166,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ALS|Camera", Meta = (ReturnDisplayName = "Camera Location"))
 	FVector GetFirstPersonCameraLocation() const;
 
+	UFUNCTION(BlueprintPure, Category = "ALS|Camera", Meta = (ReturnDisplayName = "Camera Location"))
+	FRotator GetFirstPersonCameraRotation() const;
+	
 	UFUNCTION(BlueprintPure, Category = "ALS|Camera", Meta = (ReturnDisplayName = "Pivot Location"))
 	FVector GetThirdPersonPivotLocation() const;
 

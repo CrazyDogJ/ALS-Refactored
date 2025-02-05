@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Animation/Skeleton.h"
+#include "Engine/SkeletalMesh.h"
 #include "AlsSkeletonUtility.generated.h"
 
 USTRUCT(BlueprintType)
@@ -48,4 +49,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ALS|Skeleton Utility", Meta = (AutoCreateRefTerm = "BoneName"))
 	static void SetBoneRetargetingMode(USkeleton* Skeleton, const FName& BoneName,
 	                                   EBoneTranslationRetargetingMode::Type RetargetingMode, bool bIncludeDescendants);
+
+	UFUNCTION(BlueprintCallable, Category = "ALS|Skeleton Utility")
+	static void CopyPhysicsAsset(UPhysicsAsset* RefPhysicsAsset, USkeletalMesh* ModifyingSkeletalMesh, bool bCopyBodies = true, bool bCopyConstraint = true);
+
+	UFUNCTION(BlueprintCallable, Category = "ALS|Skeleton Utility")
+	static void RemoveInvalidConstraint(UPhysicsAsset* PA);
 };

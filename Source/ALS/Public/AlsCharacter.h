@@ -484,7 +484,7 @@ public:
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
 	UAnimMontage* SelectRollMontage();
 
-	bool IsRollingAllowedToStart(const UAnimMontage* Montage) const;
+	virtual bool IsRollingAllowedToStart(const UAnimMontage* Montage) const;
 
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
 	UAlsFootstepEffectsSettings* SelectFootstepSettings();

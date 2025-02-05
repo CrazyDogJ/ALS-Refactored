@@ -1,5 +1,6 @@
 #include "AlsCameraComponent.h"
 
+#include "AlsAnimationInstance.h"
 #include "AlsCameraSettings.h"
 #include "DrawDebugHelpers.h"
 #include "Animation/AnimInstance.h"
@@ -108,6 +109,11 @@ void UAlsCameraComponent::CompleteParallelAnimationEvaluation(const bool bDoPost
 FVector UAlsCameraComponent::GetFirstPersonCameraLocation() const
 {
 	return Character->GetMesh()->GetSocketLocation(Settings->FirstPerson.CameraSocketName);
+}
+
+FRotator UAlsCameraComponent::GetFirstPersonCameraRotation() const
+{
+	return Character->GetMesh()->GetSocketRotation(Settings->FirstPerson.CameraSocketName);
 }
 
 FVector UAlsCameraComponent::GetThirdPersonPivotLocation() const
@@ -230,15 +236,27 @@ void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 		}
 	}
 
+	const auto FirstPersonOverride{
+		UAlsMath::Clamp01(GetAnimInstance()->GetCurveValue(UAlsCameraConstants::FirstPersonOverrideCurveName()))
+	};
+	
+	// Here is first person camera fix (will update control rotation)
+	if (Character->GetMesh()->GetAnimInstance() && FirstPersonOverride > 0.0f && Character->IsLocallyControlled())
+	{
+		auto ViewBlockCurveValue = Character->GetMesh()->GetAnimInstance()->GetCurveValue(UAlsConstants::ViewBlockCurveName());
+		if (ViewBlockCurveValue > 0)
+		{
+			auto Rotation = GetFirstPersonCameraRotation();
+			Rotation.Roll = 0.0f;
+			Character->GetController()->SetControlRotation(Rotation);
+		}
+	}
+	
 	const auto CameraTargetRotation{Character->GetViewRotation()};
 
 	const auto PreviousPivotTargetLocation{PivotTargetLocation};
 
 	PivotTargetLocation = GetThirdPersonPivotLocation();
-
-	const auto FirstPersonOverride{
-		UAlsMath::Clamp01(GetAnimInstance()->GetCurveValue(UAlsCameraConstants::FirstPersonOverrideCurveName()))
-	};
 
 	if (FAnimWeight::IsFullWeight(FirstPersonOverride))
 	{

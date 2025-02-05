@@ -60,12 +60,19 @@ protected:
 	
 	TWeakObjectPtr<class UAbilitySystemComponent> AbilitySystemComponent;
 public:
-	// Look at
+	// Look at start
 	UPROPERTY(BlueprintReadOnly, Category = "View")
 	UPrimitiveComponent* LookTargetComponent;
 
 	UPROPERTY(BlueprintReadOnly, Category = "View")
 	FName LookTargetSocket;
+
+	UPROPERTY(BlueprintReadOnly, Category = "View")
+	FVector LookTargetOffset = FVector(0, 0, 0);
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "View")
+	float LookTargetInterpSpeed = 10.0f;
+	// Look at end
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement)
 	UAlsCharacterMovementComponent_Extend* MovementComponent_Extend;
@@ -96,6 +103,7 @@ protected:
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
 	virtual void NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction) override;
 	virtual bool IsRagdollingAllowedToStop() const override;
+	virtual bool IsRollingAllowedToStart(const UAnimMontage* Montage) const override;
 	virtual void PostInitializeComponents() override;
 	virtual void RefreshRotationMode() override;
 	virtual class UAbilitySystemComponent* GetAbilitySystemComponent() const override;
@@ -130,7 +138,7 @@ public:
 	// Climb down ledge
 	
 	UFUNCTION(BlueprintCallable, Category = "View")
-	void SetLookCompAndSocket(UPrimitiveComponent* InComp, const FName& SocketName);
+	void SetLookCompAndSocket(UPrimitiveComponent* InComp, const FName& SocketName, const FVector& TargetOffset);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure)
 	FVector GetCapsuleBottom();
@@ -147,6 +155,15 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Exit Slide")
 	void K2_ExitSlide();
 
+	UFUNCTION(BlueprintImplementableEvent)
+	void OnPhysicalMaterialChanged(UPhysicalMaterial* PreviousPhysicalMaterial);
+
+	UPROPERTY(BlueprintReadOnly)
+	TWeakObjectPtr<UPhysicalMaterial> CurrentPhysicalMaterial;
+
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	bool IsAllowRolling() const;
+	
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
 	bool IsAllowSliding() const;
 	
