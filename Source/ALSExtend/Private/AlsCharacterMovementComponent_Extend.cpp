@@ -749,7 +749,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 	SnapToClimbingSurface(deltaTime);
 }
 
-bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing() const
+bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing()
 {
 	if (GetWaterInfoForSwim().WaterBodyIdx >= 0 &&
 		Velocity.Z < 0 &&
@@ -801,6 +801,7 @@ bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing() const
 	{
 		if (bWalkable)
 		{
+			SetInputBlocked(true);
 			Cast<AAlsCharacter_Extend>(CharacterOwner)->K2_ClimbToWalk();
 		}
 		if (DebugDrawSwitch) DrawDebugLine(GetWorld(), CurrentClimbingPosition, CurrentClimbingPosition + CurrentClimbingNormal * 50, FColor::Red, true, 5);
@@ -2001,7 +2002,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 	{
 		bJumpingOutOfWater = false;
 	}
-	if (IsSwimming())
+	if (IsSwimming() && GetWaterInfoForSwim().WaterBodyIdx >= 0)
 	{
 		bIsSwimOnSurface = GetImmerseDepth() <= GetMovementSettingsExtendSafe()->SwimmingSettings.SwimOnSurfaceDepth;
 	}

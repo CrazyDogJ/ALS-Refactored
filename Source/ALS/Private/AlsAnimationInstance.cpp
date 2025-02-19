@@ -27,16 +27,15 @@ void UAlsAnimationInstance::NativeInitializeAnimation()
 	Super::NativeInitializeAnimation();
 
 	Character = Cast<AAlsCharacter>(GetOwningActor());
-
-#if WITH_EDITOR
+	
 	const auto* World{GetWorld()};
 
-	if (IsValid(World) && !World->IsGameWorld() && !IsValid(Character))
+	// CD_Fixing : It will also work in other actor class
+	if (IsValid(World) && !IsValid(Character))
 	{
 		// Use default objects for editor preview.
 		Character = GetMutableDefault<AAlsCharacter>();
 	}
-#endif
 
 	const auto* Mesh{GetSkelMeshComponent()};
 

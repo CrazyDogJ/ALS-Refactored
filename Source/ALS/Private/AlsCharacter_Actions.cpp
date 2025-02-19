@@ -167,6 +167,15 @@ bool AAlsCharacter::IsMantlingAllowedToStart_Implementation() const
 	return !LocomotionAction.IsValid();
 }
 
+void AAlsCharacter::GetDefaultCapsule(float& OutCapsuleScaleZ, float& OutCapsuleHalfHeight,
+	float& OutCapsuleRadius)
+{
+	auto Movement = Cast<UAlsCharacterMovementComponent>(GetCharacterMovement());
+	OutCapsuleScaleZ = 1.0f;
+	OutCapsuleRadius = Movement->DefaultStandRadius;
+	OutCapsuleHalfHeight = Movement->DefaultStandHalfHeight;
+}
+
 bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings)
 {
 	if (!Settings->Mantling.bAllowMantling || GetLocalRole() <= ROLE_SimulatedProxy || !IsMantlingAllowedToStart())
@@ -209,11 +218,11 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 	const auto bDisplayDebug{UAlsDebugUtility::ShouldDisplayDebugForActor(this, UAlsConstants::MantlingDebugDisplayName())};
 #endif
 
-	const auto* Capsule{GetCapsuleComponent()};
-
-	const auto CapsuleScale{Capsule->GetComponentScale().Z};
-	const auto CapsuleRadius{Capsule->GetScaledCapsuleRadius()};
-	const auto CapsuleHalfHeight{Capsule->GetScaledCapsuleHalfHeight()};
+	float CapsuleRadius;
+	float CapsuleHalfHeight;
+	float CapsuleScaleZ;
+	GetDefaultCapsule(CapsuleScaleZ, CapsuleHalfHeight, CapsuleRadius);
+	const auto CapsuleScale{GetCapsuleComponent()->GetComponentScale().Z};
 
 	const FVector CapsuleBottomLocation{ActorLocation.X, ActorLocation.Y, ActorLocation.Z - CapsuleHalfHeight};
 

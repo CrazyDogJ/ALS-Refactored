@@ -94,7 +94,6 @@ protected:
 	virtual float GetDefaultHalfHeight() const override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	virtual void GetDefaultCapsule(float& OutCapsuleScaleZ, float& OutCapsuleHalfHeight, float& OutCapsuleRadius);
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 	virtual FGenericTeamId GetGenericTeamId() const override;

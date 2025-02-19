@@ -211,15 +211,6 @@ void AAlsCharacter_Extend::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfH
 	}
 }
 
-void AAlsCharacter_Extend::GetDefaultCapsule(float& OutCapsuleScaleZ, float& OutCapsuleHalfHeight,
-	float& OutCapsuleRadius)
-{
-	auto Movement = Cast<UAlsCharacterMovementComponent_Extend>(GetCharacterMovement());
-	OutCapsuleScaleZ = 1.0f;
-	OutCapsuleRadius = Movement->DefaultStandRadius;
-	OutCapsuleHalfHeight = Movement->DefaultStandHalfHeight;
-}
-
 void AAlsCharacter_Extend::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
@@ -1014,7 +1005,14 @@ void AAlsCharacter_Extend::OnGaitChanged_Implementation(const FGameplayTag& Prev
 
 void AAlsCharacter_Extend::RefreshVelocityYawAngle()
 {
-	if (LocomotionMode == AlsLocomotionModeTags::FreeClimbing)
+	if (GetCharacterMovement()->MovementMode == MOVE_None)
+	{
+		//Refresh velocity target yaw immediately
+		LocomotionState.VelocityYawAngle = UE_REAL_TO_FLOAT(GetActorRotation().Yaw);
+		LocomotionState.TargetYawAngle = UE_REAL_TO_FLOAT(GetActorRotation().Yaw);
+		LocomotionState.SmoothTargetYawAngle = UE_REAL_TO_FLOAT(GetActorRotation().Yaw);
+	}
+	else if (LocomotionMode == AlsLocomotionModeTags::FreeClimbing)
 	{
 		LocomotionState.VelocityYawAngle = UE_REAL_TO_FLOAT(GetActorRotation().Yaw);
 	}

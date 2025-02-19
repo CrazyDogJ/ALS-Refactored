@@ -409,6 +409,11 @@ void AAlsCharacter::RefreshMeshProperties() const
 	{
 		AnimationInstance->MarkPendingUpdate();
 	}
+
+	if (bAutonomousProxyOnListenServer && LocomotionAction == AlsLocomotionActionTags::Mantling)
+	{
+		GetMesh()->SetRelativeLocation(GetBaseTranslationOffset());
+	}
 }
 
 void AAlsCharacter::RefreshMovementBase()

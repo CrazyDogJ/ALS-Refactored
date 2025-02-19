@@ -141,6 +141,8 @@ public:
 
 	virtual void Restart() override;
 
+	virtual void GetDefaultCapsule(float& OutCapsuleScaleZ, float& OutCapsuleHalfHeight, float& OutCapsuleRadius);
+
 public:
 	const UAlsCharacterSettings* GetSettings() const;
 

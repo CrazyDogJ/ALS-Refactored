@@ -52,12 +52,6 @@ public:
 	virtual void Crouch(bool bClientSimulation = false) override;
 	virtual void UnCrouch(bool bClientSimulation) override;
 	
-	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Walking")
-	float DefaultStandHalfHeight = 75.0f;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Walking")
-	float DefaultStandRadius = 30.0f;
-	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Movement)
 	bool bPhysicsVolumeAffectMovement = false;
 
@@ -140,7 +134,7 @@ private:
 	                        Start) const;
 	void ComputeClimbingVelocity(float deltaTime);
 	void AlignClimbDashDirection();
-	bool ShouldStopClimbing() const;
+	bool ShouldStopClimbing();
 	bool HasReachedEdge() const;
 	void StopClimbing(float deltaTime, int32 Iterations, bool bShouldMantle, bool bShouldClimbDownFloor);
 	void MoveAlongClimbingSurface(float deltaTime);
