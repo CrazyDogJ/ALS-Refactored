@@ -393,14 +393,16 @@ void UAlsSkeletonUtility::CopyPhysicsAsset(UPhysicsAsset* RefPhysicsAsset, USkel
 				
 				NewConstraint->DefaultInstance.ConstraintBone1 = SourceConstraint->DefaultInstance.ConstraintBone1;
 				NewConstraint->DefaultInstance.ConstraintBone2 = SourceConstraint->DefaultInstance.ConstraintBone2;
-				
-				FTransform ChildBoneTransform = ModifyingSkeletalMesh->GetRefSkeleton().GetRefBonePose()[ModifyingSkeletalMesh->GetRefSkeleton().FindBoneIndex(SourceConstraint->DefaultInstance.ConstraintBone1)];
-				
-				NewConstraint->DefaultInstance.SetRefFrame(EConstraintFrame::Frame1, SourceConstraint->DefaultInstance.GetRefFrame(EConstraintFrame::Frame1));
-				NewConstraint->DefaultInstance.SetRefFrame(EConstraintFrame::Frame2, SourceConstraint->DefaultInstance.GetRefFrame(EConstraintFrame::Frame2));
-				NewConstraint->DefaultInstance.SetRefPosition(EConstraintFrame::Frame1, FVector::Zero());
-				NewConstraint->DefaultInstance.SetRefPosition(EConstraintFrame::Frame2, ChildBoneTransform.GetLocation());
-				PA->ConstraintSetup.Add(NewConstraint);
+				int Index = ModifyingSkeletalMesh->GetRefSkeleton().FindBoneIndex(SourceConstraint->DefaultInstance.ConstraintBone1);
+				if (ModifyingSkeletalMesh->GetRefSkeleton().GetRefBonePose().IsValidIndex(Index))
+				{
+					FTransform ChildBoneTransform = ModifyingSkeletalMesh->GetRefSkeleton().GetRefBonePose()[Index];
+					NewConstraint->DefaultInstance.SetRefFrame(EConstraintFrame::Frame1, SourceConstraint->DefaultInstance.GetRefFrame(EConstraintFrame::Frame1));
+					NewConstraint->DefaultInstance.SetRefFrame(EConstraintFrame::Frame2, SourceConstraint->DefaultInstance.GetRefFrame(EConstraintFrame::Frame2));
+					NewConstraint->DefaultInstance.SetRefPosition(EConstraintFrame::Frame1, FVector::Zero());
+					NewConstraint->DefaultInstance.SetRefPosition(EConstraintFrame::Frame2, ChildBoneTransform.GetLocation());
+					PA->ConstraintSetup.Add(NewConstraint);
+				}
 			}
 		}
 		PA->MarkPackageDirty();
