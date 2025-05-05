@@ -78,9 +78,9 @@ class ALS_API UAlsCharacterMovementComponent : public UCharacterMovementComponen
 	friend FAlsSavedMove;
 
 public:
-	// If checked, this improves the response to interaction from moving kinematic physical
+	// If checked, improves the response to interaction from moving kinematic physical
 	// bodies, but may cause some issues when interacting with simulated physical bodies.
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Settings", Transient)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
 	uint8 bAllowImprovedPenetrationAdjustment : 1 {true};
 
 	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Walking")
@@ -123,9 +123,6 @@ protected:
 	// Valid only on locally controlled characters.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
 	FRotator PreviousControlRotation{ForceInit};
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	FVector PendingPenetrationAdjustment{ForceInit};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
 	FVector PrePenetrationAdjustmentVelocity{ForceInit};
