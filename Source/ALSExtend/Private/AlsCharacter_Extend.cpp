@@ -386,8 +386,10 @@ bool AAlsCharacter_Extend::IsRollingAllowedToStart(const UAnimMontage* Montage) 
 void AAlsCharacter_Extend::PostInitializeComponents()
 {
 	// Make sure the mesh and animation blueprint are ticking after the character so they can access the most up-to-date character state.
-
-	GetMesh()->AddTickPrerequisiteActor(this);
+	if (GetMesh())
+	{
+		GetMesh()->AddTickPrerequisiteActor(this);
+	}
 
 	MovementComponent_Extend->OnPhysicsRotation.AddUObject(this, &ThisClass::CharacterMovement_OnPhysicsRotation);
 
@@ -398,7 +400,10 @@ void AAlsCharacter_Extend::PostInitializeComponents()
 	RuntimeMovementSettings_Extend = DuplicateObject(MovementSettings_Extend, nullptr);
 	MovementComponent_Extend->MovementSettings_Extend = RuntimeMovementSettings_Extend;
 
-	AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
+	if (GetMesh())
+	{
+		AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
+	}
 
 	ACharacter::PostInitializeComponents();
 }

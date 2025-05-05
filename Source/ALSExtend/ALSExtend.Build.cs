@@ -19,7 +19,9 @@ public class ALSExtend : ModuleRules
                 "AIModule",
                 "RigVM",
                 "ControlRig",
-                "PhysicsCore"
+                "PhysicsCore",
+                "RenderCore", 
+                "ToonShader"
             }
         );
 

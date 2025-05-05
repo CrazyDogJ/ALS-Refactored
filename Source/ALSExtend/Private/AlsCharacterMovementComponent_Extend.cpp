@@ -2084,7 +2084,7 @@ void UAlsCharacterMovementComponent_Extend::ComputeFloorDist(const FVector& Caps
 	                        DownwardSweepResult);
 }
 
-void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 IterationsCount)
+void UAlsCharacterMovementComponent_Extend::PhysWalking(float DeltaTime, int32 IterationsCount)
 {
 	RefreshGroundedMovementSettings();
 
@@ -2097,7 +2097,7 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 
 	// SCOPE_CYCLE_COUNTER(STAT_CharPhysWalking);
 
-	if (deltaTime < MIN_TICK_TIME)
+	if (DeltaTime < MIN_TICK_TIME)
 	{
 		return;
 	}
@@ -2114,11 +2114,13 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 		SetMovementMode(MOVE_Walking);
 		return;
 	}
-	
+
+	// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN before Iteration (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
+
 	bJustTeleported = false;
 	bool bCheckedFall = false;
 	bool bTriedLedgeMove = false;
-	float remainingTime = deltaTime;
+	float remainingTime = DeltaTime;
 
 	const EMovementMode StartingMovementMode = MovementMode;
 	const uint8 StartingCustomMovementMode = CustomMovementMode;
@@ -2144,13 +2146,21 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 		const FVector OldVelocity = Velocity;
 		Acceleration = FVector::VectorPlaneProject(Acceleration, -GetGravityDirection());
 
+		static const auto* EnsureAlwaysEnabledConsoleVariable{
+			IConsoleManager::Get().FindConsoleVariable(TEXT("p.LedgeMovement.ApplyDirectMove"))
+		};
+		check(EnsureAlwaysEnabledConsoleVariable != nullptr)
+
 		// Apply acceleration
-		if( !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() )
+		const bool bSkipForLedgeMove = bTriedLedgeMove && EnsureAlwaysEnabledConsoleVariable->GetBool();
+		if( !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && !bSkipForLedgeMove )
 		{
 			CalcVelocity(timeTick, GroundFriction, false, GetMaxBrakingDeceleration());
+			// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN after CalcVelocity (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
 		}
-		
+
 		ApplyRootMotionToVelocity(timeTick);
+		// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN after Root Motion application (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
 
 		if (MovementMode != StartingMovementMode || CustomMovementMode != StartingCustomMovementMode)
 		{
@@ -2184,10 +2194,10 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 			{
 				// pawn ended up in a different mode, probably due to the step-up-and-over flow
 				// let's refund the estimated unused time (if any) and keep moving in the new mode
-				const float DesiredDist = Delta.Size();
+				const float DesiredDist = UE_REAL_TO_FLOAT(Delta.Size());
 				if (DesiredDist > UE_KINDA_SMALL_NUMBER)
 				{
-					const float ActualDist = (UpdatedComponent->GetComponentLocation() - OldLocation).Size2D();
+					const float ActualDist = UE_REAL_TO_FLOAT(ProjectToGravityFloor(UpdatedComponent->GetComponentLocation() - OldLocation).Size());
 					remainingTime += timeTick * (1.f - FMath::Min(1.f,ActualDist/DesiredDist));
 				}
 				StartNewPhysics(remainingTime,Iterations);
@@ -2211,8 +2221,7 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 		if ( bCheckLedges && !CurrentFloor.IsWalkableFloor() )
 		{
 			// calculate possible alternate movement
-			const FVector GravDir = GetGravityDirection();
-			const FVector NewDelta = bTriedLedgeMove ? FVector::ZeroVector : GetLedgeMove(OldLocation, Delta, GravDir);
+			const FVector NewDelta = bTriedLedgeMove ? FVector::ZeroVector : GetLedgeMove(OldLocation, Delta, OldFloor);
 			if ( !NewDelta.IsZero() )
 			{
 				// first revert this move
@@ -2224,6 +2233,7 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 				// Try new movement direction
 				Velocity = NewDelta/timeTick;
 				remainingTime += timeTick;
+				Iterations--;
 				continue;
 			}
 			else
@@ -2256,9 +2266,9 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 						// TODO Start of custom ALS code block.
 
 						ApplyPendingPenetrationAdjustment();
-						
+
 						// TODO End of custom ALS code block.
-						
+
 						// If still walking, then fall. If not, assume the user set a different mode they want to keep.
 						StartFalling(Iterations, remainingTime, timeTick, Delta, OldLocation);
 					}
@@ -2268,9 +2278,9 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 				// TODO Start of custom ALS code block.
 
 				ApplyPendingPenetrationAdjustment();
-						
+
 				// TODO End of custom ALS code block.
-				
+
 				AdjustFloorHeight();
 				SetBase(CurrentFloor.HitResult.Component.Get(), CurrentFloor.HitResult.BoneName);
 			}
@@ -2279,7 +2289,7 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 				// The floor check failed because it started in penetration
 				// We do not want to try to move downward because the downward sweep failed, rather we'd like to try to pop out of the floor.
 				FHitResult Hit(CurrentFloor.HitResult);
-				Hit.TraceEnd = Hit.TraceStart + RotateGravityToWorld(FVector(0.f, 0.f, MAX_FLOOR_DIST));
+				Hit.TraceEnd = Hit.TraceStart + MAX_FLOOR_DIST * -GetGravityDirection();
 				const FVector RequestedAdjustment = GetPenetrationAdjustment(Hit);
 				ResolvePenetration(RequestedAdjustment, Hit, UpdatedComponent->GetComponentQuat());
 				bForceNextFloorCheck = true;
@@ -2315,9 +2325,9 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 
 				PrePenetrationAdjustmentVelocity = MoveVelocity;
 				bPrePenetrationAdjustmentVelocityValid = true;
-						
+
 				// TODO End of custom ALS code block.
-				
+
 				// TODO-RootMotionSource: Allow this to happen during partial override Velocity, but only set allowed axes?
 				Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / timeTick;
 				MaintainHorizontalGroundVelocity();
@@ -2329,13 +2339,15 @@ void UAlsCharacterMovementComponent_Extend::PhysWalking(float deltaTime, int32 I
 		{
 			remainingTime = 0.f;
 			break;
-		}	
+		}
 	}
 
 	if (IsMovingOnGround())
 	{
 		MaintainHorizontalGroundVelocity();
 	}
+
+	// ReSharper restore All
 }
 
 void UAlsCharacterMovementComponent_Extend::PhysicsVolumeChanged(APhysicsVolume* NewVolume)
@@ -2530,8 +2542,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 		if (bCheckLedges && !CurrentFloor.IsWalkableFloor())
 		{
 			// calculate possible alternate movement
-			const FVector GravDir = FVector(0.f, 0.f, -1.f);
-			const FVector NewDelta = bTriedLedgeMove ? FVector::ZeroVector : GetLedgeMove(OldLocation, Delta, GravDir);
+			const FVector NewDelta = bTriedLedgeMove ? FVector::ZeroVector : GetLedgeMove(OldLocation, Delta, OldFloor);
 			if (!NewDelta.IsZero())
 			{
 				// first revert this move
