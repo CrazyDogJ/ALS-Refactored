@@ -23,12 +23,12 @@ namespace AlsEnsure
 		uint8 bEnsureAlways : 1 {false};
 	};
 
-	ALS_API bool UE_DEBUG_SECTION VARARGS
+	ALS_API bool UE_COLD UE_DEBUG_SECTION VARARGS
 	Execute(std::atomic<bool>& bExecuted, const FAlsEnsureInfo& EnsureInfo, const TCHAR* Format, ...);
 }
 
 #define ALS_ENSURE_IMPLEMENTATION(Capture, bEnsureAlways, Expression, Format, ...) \
-	(LIKELY(Expression) || [Capture]() UE_DEBUG_SECTION \
+	(LIKELY(Expression) || [Capture]() UE_COLD UE_DEBUG_SECTION \
 	{ \
 		static constexpr AlsEnsure::FAlsEnsureInfo EnsureInfo{#Expression, __builtin_FILE(), __builtin_LINE(), bEnsureAlways}; \
 		static std::atomic<bool> bExecuted{false}; \
