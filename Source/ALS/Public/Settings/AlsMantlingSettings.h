@@ -126,7 +126,10 @@ public:
 	FAlsMantlingTraceSettings GroundedTrace;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	FAlsMantlingTraceSettings InAirTrace{{50.0f, 150.0f}, 70.0f};
+	FAlsMantlingTraceSettings InAirTrace{
+		.LedgeHeight = {50.0f, 150.0f},
+		.ReachDistance = 70.0f
+	};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	FAlsMantlingTraceSettings FreeClimbTrace{{50.0f, 150.0f}, 70.0f};

@@ -126,7 +126,7 @@ void AAlsCharacter::RefreshRollingPhysics(const float DeltaTime)
 
 	auto TargetRotation{GetCharacterMovement()->UpdatedComponent->GetComponentRotation()};
 
-	if (Settings->Rolling.RotationInterpolationSpeed <= 0.0f)
+	if (Settings->Rolling.RotationInterpolationHalfLife <= 0.0f)
 	{
 		TargetRotation.Yaw = RollingState.TargetYawAngle;
 
@@ -134,9 +134,9 @@ void AAlsCharacter::RefreshRollingPhysics(const float DeltaTime)
 	}
 	else
 	{
-		TargetRotation.Yaw = UAlsRotation::ExponentialDecayAngle(UE_REAL_TO_FLOAT(FMath::UnwindDegrees(TargetRotation.Yaw)),
-		                                                         RollingState.TargetYawAngle, DeltaTime,
-		                                                         Settings->Rolling.RotationInterpolationSpeed);
+		TargetRotation.Yaw = UAlsRotation::DamperExactAngle(UE_REAL_TO_FLOAT(FMath::UnwindDegrees(TargetRotation.Yaw)),
+		                                                    RollingState.TargetYawAngle, DeltaTime,
+		                                                    Settings->Rolling.RotationInterpolationHalfLife);
 
 		GetCharacterMovement()->MoveUpdatedComponent(FVector::ZeroVector, TargetRotation, false);
 	}
@@ -500,7 +500,7 @@ void AAlsCharacter::StartMantlingImplementation(const FAlsMantlingParameters& Pa
 	if (FMath::IsNearlyZero(TargetAnimationLocation.Z))
 	{
 		UE_LOG(LogAls, Warning, TEXT("Can't start mantling! The %s animation montage has incorrect root motion,")
-		       TEXT(" the final vertical location of the character must be non-zero!"), *MantlingSettings->Montage->GetName());
+		       TEXT(" the final vertical location of the character must be non-zero!"), *MantlingSettings->Montage->GetName())
 		return;
 	}
 
@@ -789,10 +789,11 @@ void AAlsCharacter::StartRagdollingImplementation()
 	GetMesh()->SetCollisionObjectType(ECC_PhysicsBody);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	GetMesh()->SetSimulatePhysics(true);
-	// I have no idea why ragdoll will fly around when any physics body instances are set to "Simulated" in physics asset.
-	// So I have to reset physics after we enable ragdoll.
+
+	// This is required for the ragdoll to behave properly when any body instance is set to simulated in a physics asset.
+	// TODO Check the need for this in future engine versions.
 	GetMesh()->ResetAllBodiesSimulatePhysics();
-	
+
 	const auto* PelvisBody{GetMesh()->GetBodyInstance(UAlsConstants::PelvisBoneName())};
 	FVector PelvisLocation;
 
@@ -838,6 +839,7 @@ void AAlsCharacter::OnRagdollShouldAddForce_Implementation()
 {
 	// Default by view rotation.
 	FVector RagdollJumpForce = GetViewState().Rotation.Quaternion().GetForwardVector().GetSafeNormal2D() * 5000.0f;
+	//TODO Hard code fix
 	RagdollJumpForce.Z = 5000.0f;
 	GetMesh()->AddForceToAllBodiesBelow(RagdollJumpForce, UAlsConstants::PelvisBoneName(), true);
 }
@@ -904,9 +906,9 @@ void AAlsCharacter::RefreshRagdolling(const float DeltaTime)
 		// Apply ragdoll location corrections.
 
 		static constexpr auto PullForce{750.0f};
-		static constexpr auto InterpolationSpeed{0.6f};
+		static constexpr auto InterpolationHalfLife{1.2f};
 
-		RagdollingState.PullForce = FMath::FInterpTo(RagdollingState.PullForce, PullForce, DeltaTime, InterpolationSpeed);
+		RagdollingState.PullForce = UAlsMath::DamperExact(RagdollingState.PullForce, PullForce, DeltaTime, InterpolationHalfLife);
 
 		const auto HorizontalSpeedSquared{RagdollingState.Velocity.SizeSquared2D()};
 
@@ -1143,7 +1145,7 @@ void AAlsCharacter::StopRagdollingImplementation()
 
 		GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]
 		{
-			ALS_ENSURE(!GetMesh()->bEnableUpdateRateOptimizations);
+			ALS_ENSURE(!GetMesh()->bEnableUpdateRateOptimizations); // NOLINT(clang-diagnostic-unused-value)
 			GetMesh()->bEnableUpdateRateOptimizations = true;
 		}));
 	}
