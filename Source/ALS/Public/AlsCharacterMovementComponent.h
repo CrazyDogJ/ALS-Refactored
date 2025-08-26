@@ -191,11 +191,6 @@ protected:
 	virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAcceleration) override;
 
 public:
-	void SavePenetrationAdjustment(const FHitResult& Hit);
-
-	void ApplyPendingPenetrationAdjustment();
-
-public:
 	UFUNCTION(BlueprintCallable, Category = "ALS|Character Movement")
 	void SetMovementSettings(UAlsMovementSettings* NewMovementSettings);
 

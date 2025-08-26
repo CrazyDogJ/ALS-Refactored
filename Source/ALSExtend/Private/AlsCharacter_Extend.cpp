@@ -8,7 +8,6 @@
 #include "AlsAnimationInstance.h"
 #include "AlsAnimationInstance_Extend.h"
 #include "AlsCharacterMovementComponent_Extend.h"
-#include "SkeletalMeshComponent_Outline.h"
 #include "CustomMovementMode.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PlayerState.h"
@@ -17,11 +16,6 @@
 #include "Settings/AlsCharacterSettings.h"
 #include "AlsGameplayTags_Extend.h"
 #include "Utility/AlsVector.h"
-
-void AAlsCharacter_Extend::OnConstruction(const FTransform& Transform)
-{
-	Super::OnConstruction(Transform);
-}
 
 void AAlsCharacter_Extend::CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo)
 {
@@ -386,10 +380,7 @@ bool AAlsCharacter_Extend::IsRollingAllowedToStart(const UAnimMontage* Montage) 
 void AAlsCharacter_Extend::PostInitializeComponents()
 {
 	// Make sure the mesh and animation blueprint are ticking after the character so they can access the most up-to-date character state.
-	if (GetMesh())
-	{
-		GetMesh()->AddTickPrerequisiteActor(this);
-	}
+	GetMesh()->AddTickPrerequisiteActor(this);
 
 	MovementComponent_Extend->OnPhysicsRotation.AddUObject(this, &ThisClass::CharacterMovement_OnPhysicsRotation);
 
@@ -400,10 +391,7 @@ void AAlsCharacter_Extend::PostInitializeComponents()
 	RuntimeMovementSettings_Extend = DuplicateObject(MovementSettings_Extend, nullptr);
 	MovementComponent_Extend->MovementSettings_Extend = RuntimeMovementSettings_Extend;
 
-	if (GetMesh())
-	{
-		AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
-	}
+	AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
 
 	ACharacter::PostInitializeComponents();
 }
@@ -433,14 +421,12 @@ UAbilitySystemComponent* AAlsCharacter_Extend::GetAbilitySystemComponent() const
 }
 
 AAlsCharacter_Extend::AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer.SetDefaultSubobjectClass<UAlsCharacterMovementComponent_Extend>(ACharacter::CharacterMovementComponentName)
-		.SetDefaultSubobjectClass<USkeletalMeshComponent_Outline>(MeshComponentName))
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UAlsCharacterMovementComponent_Extend>(ACharacter::CharacterMovementComponentName))
 {
 	Camera = CreateDefaultSubobject<UAlsCameraComponent>(FName{TEXTVIEW("Camera")});
 	Camera->SetupAttachment(GetMesh());
 	Camera->SetRelativeRotation_Direct({0.0f, 90.0f, 0.0f});
 	MovementComponent_Extend = Cast<UAlsCharacterMovementComponent_Extend>(GetCharacterMovement());
-	Mesh_Outline = Cast<USkeletalMeshComponent_Outline>(GetMesh());
 	MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(FName{TEXTVIEW("MotionWarping")});
 	GetCapsuleComponent()->SetNotifyRigidBodyCollision(true);
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AAlsCharacter_Extend::OnCapsuleHit);
@@ -637,7 +623,7 @@ void AAlsCharacter_Extend::SwimUp()
 {
 	if (MovementComponent_Extend->IsSwimming() || MovementComponent_Extend->IsFlying())
 	{
-		FVector Direction;
+		FVector Direction{FVector::Zero()};
 		Direction.Z = 1.f;
 		AddMovementInput(Direction, 1.f);
 		if (!MovementComponent_Extend->bIsSwimOnSurface)
@@ -787,7 +773,7 @@ void AAlsCharacter_Extend::SwimDown()
 {
 	if (MovementComponent_Extend->IsSwimming() || MovementComponent_Extend->IsFlying())
 	{
-		FVector Direction;
+		FVector Direction{FVector::Zero()};
 		Direction.Z = -1.f;
 		AddMovementInput(Direction, 1.0f);
 	}

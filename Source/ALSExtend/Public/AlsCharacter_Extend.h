@@ -10,7 +10,6 @@
 #include "GameplayEffectTypes.h"
 #include "GenericTeamAgentInterface.h"
 #include "MotionWarpingComponent.h"
-#include "SkeletalMeshComponent_Outline.h"
 #include "AlsCharacter_Extend.generated.h"
 
 USTRUCT(BlueprintType)
@@ -77,16 +76,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement)
 	UAlsCharacterMovementComponent_Extend* MovementComponent_Extend;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement)
-	USkeletalMeshComponent_Outline* Mesh_Outline;
-
 	UPROPERTY(EditDefaultsOnly)
 	float RagdollHitThreshold = 10.0f;
 #pragma endregion
 
 #pragma region Functions
 protected:
-	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo) override;
 	virtual void ApplyDesiredStance() override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -115,7 +110,7 @@ protected:
 	void RefreshSwimmingRotation(float DeltaTime);
 	void RefreshGlidingRotation(float DeltaTime);
 public:
-	AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer);
+	explicit AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer);
 
 	UFUNCTION(BlueprintCallable)
 	void FixTargetRotation();

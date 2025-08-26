@@ -20,8 +20,6 @@ public class ALSExtend : ModuleRules
                 "RigVM",
                 "ControlRig",
                 "PhysicsCore",
-                "RenderCore", 
-                "ToonShader"
             }
         );
 

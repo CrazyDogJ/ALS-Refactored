@@ -140,8 +140,8 @@ private:
 	void MoveAlongClimbingSurface(float deltaTime);
 	void SnapToClimbingSurface(float deltaTime) const;
 	bool ClimbDownToFloor() const;
-	void FindFloor_Custom(const FVector& CapsuleLocation, FFindFloorResult& OutFloorResult, bool bCanUseCachedLocation, const FHitResult* DownwardSweepResult) const;
-	void ComputeFloorDist_Custom(const FVector& CapsuleLocation, float LineDistance, float SweepDistance, FFindFloorResult& OutFloorResult, float SweepRadius, const FHitResult* DownwardSweepResult) const;
+	//void FindFloor_Custom(const FVector& CapsuleLocation, FFindFloorResult& OutFloorResult, bool bCanUseCachedLocation, const FHitResult* DownwardSweepResult) const;
+	//void ComputeFloorDist_Custom(const FVector& CapsuleLocation, float LineDistance, float SweepDistance, FFindFloorResult& OutFloorResult, float SweepRadius, const FHitResult* DownwardSweepResult) const;
 	void UpdateClimbDashState(float deltaTime);
 	void StopClimbDashing();
 	UAlsMovementSettings_Extend* GetMovementSettingsExtendSafe() const;
@@ -326,9 +326,9 @@ protected:
 	
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	virtual void ComputeFloorDist(const FVector& CapsuleLocation, float LineDistance, float SweepDistance, FFindFloorResult& OutFloorResult, float SweepRadius, const FHitResult* DownwardSweepResult) const override;
+	//virtual void ComputeFloorDist(const FVector& CapsuleLocation, float LineDistance, float SweepDistance, FFindFloorResult& OutFloorResult, float SweepRadius, const FHitResult* DownwardSweepResult) const override;
 
-	virtual void PhysWalking(float deltaTime, int32 Iterations) override;
+	//virtual void PhysWalking(float deltaTime, int32 Iterations) override;
 #pragma region Slide
 	
 public:
