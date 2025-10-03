@@ -22,6 +22,9 @@ public:
 	UPROPERTY(Transient, Meta = (Input))
 	FQuat Rotation{ForceInit};
 
+	UPROPERTY(Meta = (Input, ClampMin = 0, ClampMax = 90, ForceUnits = "deg"))
+	float WalkableFloorAngle{45.0f};
+
 	UPROPERTY(Meta = (Input))
 	TEnumAsByte<ECollisionChannel> TraceChannel{ECC_Visibility};
 	
@@ -47,7 +50,10 @@ public:
 	bool bFootBoxValid{false};
 
 	UPROPERTY(Transient, Meta = (Output))
-	FHitResult FootBoxHitResult{ForceInit};
+	float OffsetLocationZ{0.0f};
+
+	UPROPERTY(Transient, Meta = (Output))
+	FVector OffsetNormal{ForceInit};
 public:
 	virtual void Initialize() override;
 	RIGVM_METHOD()

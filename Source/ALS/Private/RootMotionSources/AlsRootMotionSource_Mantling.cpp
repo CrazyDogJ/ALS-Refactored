@@ -32,7 +32,8 @@ bool FAlsRootMotionSource_Mantling::Matches(const FRootMotionSource* Other) cons
 	const auto* OtherCasted{static_cast<const FAlsRootMotionSource_Mantling*>(Other)}; // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
 
 	return MantlingSettings == OtherCasted->MantlingSettings &&
-	       TargetPrimitive == OtherCasted->TargetPrimitive;
+	       TargetPrimitive == OtherCasted->TargetPrimitive &&
+	       SocketName == OtherCasted->SocketName;
 }
 
 void FAlsRootMotionSource_Mantling::PrepareRootMotion(const float SimulationDeltaTime, const float DeltaTime,
@@ -58,8 +59,8 @@ void FAlsRootMotionSource_Mantling::PrepareRootMotion(const float SimulationDelt
 
 	auto TargetTransform{
 		MovementBaseUtility::UseRelativeLocation(TargetPrimitive.Get())
-			? FTransform{TargetRelativeRotation, TargetRelativeLocation, TargetPrimitive->GetComponentScale()}
-			.GetRelativeTransformReverse(TargetPrimitive->GetComponentTransform())
+			? FTransform{TargetRelativeRotation, TargetRelativeLocation, TargetPrimitive->GetSocketTransform(SocketName, RTS_World).GetScale3D()}
+			.GetRelativeTransformReverse(TargetPrimitive->GetSocketTransform(SocketName, RTS_World))
 			: FTransform{TargetRelativeRotation, TargetRelativeLocation}
 	};
 
@@ -154,6 +155,7 @@ bool FAlsRootMotionSource_Mantling::NetSerialize(FArchive& Archive, UPackageMap*
 
 	Archive << MantlingSettings;
 	Archive << TargetPrimitive;
+	Archive << SocketName;
 
 	bSuccess &= SerializePackedVector<100, 30>(TargetRelativeLocation, Archive);
 

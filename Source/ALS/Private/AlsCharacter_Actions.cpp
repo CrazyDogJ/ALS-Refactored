@@ -433,10 +433,11 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 	// If the target primitive can't move, then use world coordinates to save
 	// some performance by skipping some coordinate space transformations later.
 
+	// Add socket support.
 	if (MovementBaseUtility::UseRelativeLocation(TargetPrimitive))
 	{
 		const auto TargetRelativeTransform{
-			TargetPrimitive->GetComponentTransform().GetRelativeTransform({TargetRotation, TargetLocation})
+			TargetPrimitive->GetSocketTransform(Parameters.SocketName, RTS_World).GetRelativeTransform({TargetRotation, TargetLocation})
 		};
 
 		Parameters.TargetRelativeLocation = TargetRelativeTransform.GetLocation();
@@ -463,13 +464,25 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 	return true;
 }
 
+bool AAlsCharacter::IsMantlingFinalAllowedToStart_Implementation(const FAlsMantlingParameters& Parameters)
+{
+	return true;
+}
+
 void AAlsCharacter::ServerStartMantling_Implementation(const FAlsMantlingParameters& Parameters)
 {
-	if (IsMantlingAllowedToStart())
+	if (!IsMantlingAllowedToStart())
 	{
-		MulticastStartMantling(Parameters);
-		ForceNetUpdate();
+		return;
 	}
+
+	if (!IsMantlingFinalAllowedToStart(Parameters))
+	{
+		return;
+	}
+	
+	MulticastStartMantling(Parameters);
+	ForceNetUpdate();
 }
 
 void AAlsCharacter::MulticastStartMantling_Implementation(const FAlsMantlingParameters& Parameters)
@@ -480,6 +493,11 @@ void AAlsCharacter::MulticastStartMantling_Implementation(const FAlsMantlingPara
 void AAlsCharacter::StartMantlingImplementation(const FAlsMantlingParameters& Parameters)
 {
 	if (!IsMantlingAllowedToStart())
+	{
+		return;
+	}
+
+	if (!IsMantlingFinalAllowedToStart(Parameters))
 	{
 		return;
 	}
@@ -513,8 +531,8 @@ void AAlsCharacter::StartMantlingImplementation(const FAlsMantlingParameters& Pa
 		bUseRelativeLocation
 			? FTransform{
 				TargetRelativeRotation, Parameters.TargetRelativeLocation,
-				Parameters.TargetPrimitive->GetComponentScale()
-			}.GetRelativeTransformReverse(Parameters.TargetPrimitive->GetComponentTransform())
+				Parameters.TargetPrimitive->GetSocketTransform(Parameters.SocketName, RTS_World).GetScale3D()
+			}.GetRelativeTransformReverse(Parameters.TargetPrimitive->GetSocketTransform(Parameters.SocketName, RTS_World))
 			: FTransform{TargetRelativeRotation, Parameters.TargetRelativeLocation}
 	};
 
@@ -550,6 +568,7 @@ void AAlsCharacter::StartMantlingImplementation(const FAlsMantlingParameters& Pa
 	RootMotionSource->ActorRotationOffset = ActorRotationOffset.Rotator();
 	RootMotionSource->TargetAnimationLocation = TargetAnimationLocation;
 	RootMotionSource->MontageStartTime = StartTime;
+	RootMotionSource->SocketName = Parameters.SocketName;
 
 	MantlingState.RootMotionSourceId = GetCharacterMovement()->ApplyRootMotionSource(RootMotionSource);
 

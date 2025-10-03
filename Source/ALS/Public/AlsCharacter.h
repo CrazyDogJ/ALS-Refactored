@@ -515,6 +515,9 @@ public:
 	bool StartMantlingGrounded();
 
 	bool StartMantling(const FAlsMantlingTraceSettings& TraceSettings);
+
+	UFUNCTION(BlueprintNativeEvent, Category = "ALS|Character")
+	bool IsMantlingFinalAllowedToStart(const FAlsMantlingParameters& Parameters);
 private:
 	bool StartMantlingInAir();
 

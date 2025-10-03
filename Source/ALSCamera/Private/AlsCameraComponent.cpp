@@ -72,6 +72,8 @@ void UAlsCameraComponent::BeginPlay()
 	ALS_ENSURE(IsValid(Settings));
 	ALS_ENSURE(IsValid(Character));
 
+	SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	
 	Super::BeginPlay();
 }
 
@@ -377,7 +379,7 @@ void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 	if (GetAnimInstance())
 	{
 		const float OffsetXSpeed = {GetAnimInstance()->GetCurveValue(UAlsCameraConstants::LocationLagXCurveName())};
-		CurrentOffsetX = UAlsMath::ExponentialDecay(CurrentOffsetX, TargetOffsetX, DeltaTime,OffsetXSpeed);
+		CurrentOffsetX = UAlsMath::DamperExact(CurrentOffsetX, TargetOffsetX, DeltaTime, OffsetXSpeed);
 	}
 	
 	CalPostProcessEvent.Broadcast(Settings->PostProcess, PostProcessWeight);

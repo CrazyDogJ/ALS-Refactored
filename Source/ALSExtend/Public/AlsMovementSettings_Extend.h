@@ -168,10 +168,10 @@ struct ALSEXTEND_API FAlsSwimmingSettings
 	UPROPERTY(EditDefaultsOnly)
 	float BeginSwimDepth = 75.0f;
 
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float SwimCapsuleRadius = 30.0f;
 
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float SwimCapsuleHalfHeight = 90.0f;
 
 	UPROPERTY(EditDefaultsOnly)

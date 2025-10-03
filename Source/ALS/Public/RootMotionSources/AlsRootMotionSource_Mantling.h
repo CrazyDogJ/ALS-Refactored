@@ -18,6 +18,9 @@ public:
 	TWeakObjectPtr<const UPrimitiveComponent> TargetPrimitive;
 
 	UPROPERTY()
+	FName SocketName;
+	
+	UPROPERTY()
 	FVector TargetRelativeLocation{ForceInit};
 
 	UPROPERTY()

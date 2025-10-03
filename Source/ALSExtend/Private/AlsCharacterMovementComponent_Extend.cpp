@@ -436,6 +436,8 @@ UAlsCharacterMovementComponent_Extend::UAlsCharacterMovementComponent_Extend()
 	// Set default half height
 	DefaultStandHalfHeight = 75.0f;
 	DefaultStandRadius = 30.0f;
+
+	SetIsReplicated(true);
 }
 
 void UAlsCharacterMovementComponent_Extend::Crouch(bool bClientSimulation)
@@ -730,6 +732,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 		{
 			if (Character->StartMantlingFreeClimb())
 			{
+				if (DebugDrawSwitch) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Try mantle"));
 				StopClimbing(deltaTime, Iterations, false, false);
 			}
 			//if (Character->CheckStartMantlingFreeClimb())

@@ -21,6 +21,9 @@ struct FClimbDownParams
 	UPrimitiveComponent* Component;
 
 	UPROPERTY(BlueprintReadOnly)
+	FName SocketName;
+	
+	UPROPERTY(BlueprintReadOnly)
 	FTransform Transform_A;
 
 	UPROPERTY(BlueprintReadOnly)
@@ -90,6 +93,7 @@ protected:
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void OnPlayerStateChanged(APlayerState* NewPlayerState, APlayerState* OldPlayerState) override;
 	virtual void OnRep_PlayerState() override;
 	virtual FGenericTeamId GetGenericTeamId() const override;
 	virtual ETeamAttitude::Type GetTeamAttitudeTowards(const AActor& Other) const override;
@@ -107,6 +111,7 @@ protected:
 	virtual void RefreshGait() override;
 	virtual void OnGaitChanged_Implementation(const FGameplayTag& PreviousGait) override;
 	virtual void RefreshVelocityYawAngle() override;
+	virtual bool IsMantlingFinalAllowedToStart_Implementation(const FAlsMantlingParameters& Parameters) override;
 	void RefreshSwimmingRotation(float DeltaTime);
 	void RefreshGlidingRotation(float DeltaTime);
 public:

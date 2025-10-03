@@ -59,7 +59,7 @@ FAlsRigUnit_FootInterp_Execute()
 	static constexpr auto LocationInterpolationDampingRatio{4.0f};
 	static constexpr auto LocationInterpolationTargetVelocityAmount{1.0f};
 
-	OffsetLocationZ = UAlsMath::SpringDampFloat(OffsetSpringState, OffsetLocationZ, OffsetTargetLocationZ,
+	OffsetLocationZ = UAlsMath::SpringDamperFloat(OffsetSpringState, OffsetLocationZ, OffsetTargetLocationZ,
 	                                            ExecuteContext.GetDeltaTime(), LocationInterpolationFrequency,
 	                                            LocationInterpolationDampingRatio, LocationInterpolationTargetVelocityAmount);
 

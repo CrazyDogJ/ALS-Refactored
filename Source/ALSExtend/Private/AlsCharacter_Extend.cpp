@@ -15,6 +15,8 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Settings/AlsCharacterSettings.h"
 #include "AlsGameplayTags_Extend.h"
+#include "WaterBodyActor.h"
+#include "Engine/OverlapResult.h"
 #include "Utility/AlsVector.h"
 
 void AAlsCharacter_Extend::CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo)
@@ -232,6 +234,13 @@ void AAlsCharacter_Extend::PossessedBy(AController* NewController)
 			GetMesh()->bOnlyAllowAutonomousTickPose = true;
 		}
 	}
+}
+
+void AAlsCharacter_Extend::OnPlayerStateChanged(APlayerState* NewPlayerState, APlayerState* OldPlayerState)
+{
+	Super::OnPlayerStateChanged(NewPlayerState, OldPlayerState);
+	
+	K2_OnPlayerStateRep();
 }
 
 void AAlsCharacter_Extend::OnRep_PlayerState()
@@ -456,7 +465,7 @@ void AAlsCharacter_Extend::TryClimbDownLedge()
 	bool bCanClimbDown;
 	MovementComponent_Extend->CheckClimbDownLedge(ForwardLoc, DownLoc, ForwardRot, bCanClimbDown);
 
-	auto CurrentFloorComp = MovementComponent_Extend->CurrentFloor.HitResult.GetComponent();
+	auto CurrentFloorComp = BasedMovement.MovementBase;
 	if (!bCanClimbDown)
 	{
 		return;
@@ -465,14 +474,14 @@ void AAlsCharacter_Extend::TryClimbDownLedge()
 	FTransform TransformA = UKismetMathLibrary::MakeRelativeTransform(
 		FTransform(GetActorRotation(),
 		ForwardLoc, FVector::OneVector),
-		CurrentFloorComp->GetComponentTransform());
+		CurrentFloorComp->GetSocketTransform(BasedMovement.BoneName));
 
 	FTransform TransformB = UKismetMathLibrary::MakeRelativeTransform(
 		FTransform(ForwardRot,
 		DownLoc, FVector::OneVector),
-		CurrentFloorComp->GetComponentTransform());
+		CurrentFloorComp->GetSocketTransform(BasedMovement.BoneName));
 
-	auto ClimbDownParams = FClimbDownParams(CurrentFloorComp, TransformA, TransformB);
+	auto ClimbDownParams = FClimbDownParams(CurrentFloorComp, BasedMovement.BoneName, TransformA, TransformB);
 
 	if (GetLocalRole() >= ROLE_Authority)
 	{
@@ -526,11 +535,11 @@ void AAlsCharacter_Extend::ClimbDownLedgeImplementation(const FClimbDownParams& 
 	}
 	
 	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(RuntimeMovementSettings_Extend->ClimbingSettings.WarpTarget_A,
-													   Params.Component, FName(), true,
+													   Params.Component, Params.SocketName, true,
 													   Params.Transform_A.GetLocation(), Params.Transform_A.GetRotation().Rotator());
 
 	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(RuntimeMovementSettings_Extend->ClimbingSettings.WarpTarget_B,
-													   Params.Component, FName(), true,
+													   Params.Component, Params.SocketName, true,
 													   Params.Transform_B.GetLocation(), Params.Transform_B.GetRotation().Rotator());
 
 	MovementComponent_Extend->SetMovementMode(MOVE_Flying);
@@ -738,7 +747,7 @@ void AAlsCharacter_Extend::RefreshSwimmingRotation(float DeltaTime)
 				: LocomotionState.VelocityYawAngle
 		};
 
-		const auto RotationInterpolationSpeed{CalculateGroundedMovingRotationInterpolationSpeed()};
+		const auto RotationInterpolationSpeed{CalculateGroundedMovingRotationInterpolationHalfLife()};
 
 		static constexpr auto TargetYawAngleRotationSpeed{800.0f};
 
@@ -1011,4 +1020,31 @@ void AAlsCharacter_Extend::RefreshVelocityYawAngle()
 	{
 		Super::RefreshVelocityYawAngle();
 	}
+}
+
+bool AAlsCharacter_Extend::IsMantlingFinalAllowedToStart_Implementation(const FAlsMantlingParameters& Parameters)
+{
+	if (!MovementSettings_Extend)
+	{
+		return Super::IsMantlingFinalAllowedToStart_Implementation(Parameters);
+	}
+
+	// Get overlapping water body actors;
+	TArray<FOverlapResult> OverlapResults;
+	const float Radius = MovementSettings_Extend->SwimmingSettings.SwimCapsuleRadius;
+	const float HalfHeight = MovementSettings_Extend->SwimmingSettings.SwimCapsuleHalfHeight;
+	const TArray<AActor*> IgnoreActors {this};
+	const TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes {UEngineTypes::ConvertToObjectType(ECC_WorldStatic)};
+	TArray<AActor*> OutActors;
+	
+	UKismetSystemLibrary::SphereOverlapActors(
+		GetWorld(),
+		Parameters.TargetRelativeLocation + FVector(0.0f, 0.0f, HalfHeight),
+		Radius,
+		ObjectTypes,
+		AWaterBody::StaticClass(),
+		IgnoreActors,
+		OutActors);
+
+	return OutActors.Num() == 0;
 }

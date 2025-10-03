@@ -77,6 +77,26 @@ FAlsRigUnit_FootBoxTrace_Execute()
 			}
 		}
 	}
-	
-	FootBoxHitResult = FootBoxHit;
+
+	const auto HitNormal{ExecuteContext.GetToWorldSpaceTransform().InverseTransformVector(FootBoxHit.ImpactNormal)};
+
+	if (!FootBoxHit.bBlockingHit || HitNormal.Z < FMath::Cos(FMath::DegreesToRadians(WalkableFloorAngle)))
+	{
+		OffsetLocationZ = 0.0f;
+		OffsetNormal = FVector::ZAxisVector;
+		return;
+	}
+
+	const auto HitLocation{ExecuteContext.ToVMSpace(FootBoxHit.ImpactPoint)};
+
+	// Calculate how much we need to offset the foot along the Z axis to get it perfectly aligned with the sloped surface.
+	// Without this, the foot will sink into the surface. This formula can be derived from the right triangle cosine formula
+	// cos(a) = adjacent / hypotenuse, where cos(a) is SlopeAngleCos and adjacent is FootHeight. HitLocation.Z already contains
+	// a correction for FootHeight, so we need to subtract the FootHeight at the end of the formula so it won't be applied twice.
+
+	const auto SlopeAngleCos{UE_REAL_TO_FLOAT(HitNormal.Z)};
+	const auto SlopeOffsetZ{SlopeAngleCos > UE_SMALL_NUMBER ? FootBox.Z / SlopeAngleCos - FootBox.Z : 0.0f};
+
+	OffsetLocationZ = UE_REAL_TO_FLOAT(HitLocation.Z + SlopeOffsetZ);
+	OffsetNormal = HitNormal;
 }
