@@ -25,6 +25,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ALS|Utility", Meta = (AutoCreateRefTerm = "Tag", ReturnDisplayName = "Child Tags"))
 	static FGameplayTagContainer GetChildTags(const FGameplayTag& Tag);
 
+	UFUNCTION(BlueprintPure, Category = "ALS|Utility", Meta = (AutoCreateRefTerm = "Tag", ReturnDisplayName = "Direct Parent Tag"))
+	static FGameplayTag GetDirectParentTag(const FGameplayTag& Tag);
+	
 	UFUNCTION(BlueprintPure, Category = "ALS|Utility", Meta = (AutoCreateRefTerm = "Tag", ReturnDisplayName = "Tag Name"))
 	static FName GetSimpleTagName(const FGameplayTag& Tag);
 

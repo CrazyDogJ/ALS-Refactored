@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AbilitySystemInterface.h"
 #include "AlsCharacter.h"
+#include "Settings/AlsCapsuleSizeSettings.h"
 #include "AlsCameraComponent.h"
 #include "AlsCharacterMovementComponent_Extend.h"
 #include "GameplayEffectTypes.h"
@@ -44,12 +45,18 @@ class ALSEXTEND_API AAlsCharacter_Extend : public AAlsCharacter, public IAbility
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings|Als Character")
 	TObjectPtr<UAlsMovementSettings_Extend> MovementSettings_Extend;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings|Als Character")
+	TObjectPtr<UAlsCapsuleSizeSettings> CapsuleSizeSettings;
 	
-	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character")
+	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character", Transient)
 	TObjectPtr<UAlsMovementSettings> RuntimeMovementSettings;
 
-	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character")
+	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character", Transient)
 	TObjectPtr<UAlsMovementSettings_Extend> RuntimeMovementSettings_Extend;
+
+	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character", Transient)
+	TObjectPtr<UAlsCapsuleSizeSettings> RuntimeCapsuleSizeSettings;
 	
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = Movement)
 	TObjectPtr<UAlsCameraComponent> Camera;
@@ -85,13 +92,17 @@ public:
 
 #pragma region Functions
 protected:
+	virtual void OnConstruction(const FTransform& Transform) override;
+	
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo) override;
 	virtual void ApplyDesiredStance() override;
 	virtual void Tick(float DeltaSeconds) override;
-	virtual bool CanSprint() const override;
-	virtual float GetDefaultHalfHeight() const override;
+
+	// Fix crouch half height adjust Start
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	// Fix crouch half height adjust End
+	
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnPlayerStateChanged(APlayerState* NewPlayerState, APlayerState* OldPlayerState) override;
 	virtual void OnRep_PlayerState() override;
@@ -99,7 +110,15 @@ protected:
 	virtual ETeamAttitude::Type GetTeamAttitudeTowards(const AActor& Other) const override;
 	virtual FGameplayTag CalculateActualGait(const FGameplayTag& MaxAllowedGait) const override;
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
+
+	// Gameplay Tag For ASC
+	virtual void NotifyViewModeChanged(const FGameplayTag& PreviousViewMode) override;
+	virtual void NotifyLocomotionModeChanged(const FGameplayTag& PreviousLocomotionMode) override;
+	virtual void NotifyRotationModeChanged(const FGameplayTag& PreviousRotationMode) override;
+	virtual void NotifyStanceChanged(const FGameplayTag& PreviousStance) override;
+	virtual void NotifyGaitChanged(const FGameplayTag& PreviousGait) override;
 	virtual void NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction) override;
+	
 	virtual bool IsRagdollingAllowedToStop() const override;
 	virtual bool IsRollingAllowedToStart(const UAnimMontage* Montage) const override;
 	virtual void PostInitializeComponents() override;
@@ -109,11 +128,15 @@ protected:
 	virtual void OnJumped_Implementation() override;
 	virtual bool RefreshCustomInAirRotation(float DeltaTime) override;
 	virtual void RefreshGait() override;
-	virtual void OnGaitChanged_Implementation(const FGameplayTag& PreviousGait) override;
+	virtual void RefreshLocomotion() override;
 	virtual void RefreshVelocityYawAngle() override;
 	virtual bool IsMantlingFinalAllowedToStart_Implementation(const FAlsMantlingParameters& Parameters) override;
+	virtual void GetDefaultCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius) override;
+	
 	void RefreshSwimmingRotation(float DeltaTime);
 	void RefreshGlidingRotation(float DeltaTime);
+	
+	void UpdateMeshRelativeLocation(float DefaultHalfHeight, bool bShouldMoveComp = false);
 public:
 	explicit AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer);
 
@@ -234,12 +257,6 @@ public:
 	UFUNCTION(Category = "Character Movement: Walking", BlueprintCallable, NetMulticast, Reliable)
 	void TurnInPlaceImmediately();
 
-	UFUNCTION(BlueprintCallable, Category = "Character Movement: Walking")
-	void SetDefaultStandHalfHeight(float InValue);
-
-	UFUNCTION(BlueprintCallable, Category = "Character Movement: Walking")
-	void SetDefaultStandRadius(float InValue);
-
 	UFUNCTION()
 	void OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 
@@ -254,5 +271,14 @@ public:
 	bool StartMantlingFreeClimb();
 
 	bool StartMantlingGliding();
-	#pragma endregion 
+
+	void SetGameplayTagInASC(const FGameplayTag& AlsTag, const FGameplayTag& AlsParentTag = FGameplayTag::EmptyTag);
+	void InitGameplayTagInASC();
+	
+	UAlsCapsuleSizeSettings* GetCapsuleSettings() const {return RuntimeCapsuleSizeSettings;}
+	float GetScaledRadius(float UnscaledRadius) const;
+	float GetScaledHaleHeight(float UnscaledHalfHeight) const;
+#pragma endregion
+
+	friend UAlsCharacterMovementComponent_Extend;
 };

@@ -9,6 +9,8 @@
 
 #include "SwingRopeActor.generated.h"
 
+class USplineMeshComponent;
+
 UCLASS(Blueprintable)
 class ALSEXTEND_API ASwingRopeActor : public AActor
 {
@@ -23,11 +25,21 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	void UpdateSpline();
 	void SetIgnore();
+	void ConstructRopeByComps();
 
 	UFUNCTION()
 	void OnRep_PlayersOnRope();
 	
 	//properties
+	UPROPERTY()
+	TArray<USplineMeshComponent*> SplineMeshComponents;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	int SplineMeshAdditionalCount = 0;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UStaticMesh* SplineMesh;
+	
 	UPROPERTY(BlueprintReadWrite)
 	TArray<UCapsuleComponent*> CapsuleComponents;
 
@@ -54,4 +66,14 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool bDrawDebug = false;
+
+	//chaos body instance
+	UPROPERTY()
+	USkeletalMeshComponent* SkeletalMeshComponent;
+	
+	TArray<FBodyInstance*> RopeBodies;
+	TArray<FConstraintInstance*> RopeConstraints;
+
+	void ConstructRopeByInstances();
+	void UpdateSplineByInstances();
 };

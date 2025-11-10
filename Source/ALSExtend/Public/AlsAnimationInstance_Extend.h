@@ -4,8 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "AlsAnimationInstance.h"
-#include "AlsMorphSettings.h"
-#include "BlinkMorphState.h"
+#include "Settings/AlsMorphSettings.h"
+#include "Utility/BlinkMorphState.h"
 #include "AlsAnimationInstance_Extend.generated.h"
 
 class UAlsLinkedAnimationInstance_Extend;
@@ -51,5 +51,8 @@ public:
 	
 	UFUNCTION(BlueprintCallable)
 	void TurnInPlaceImmediately();
+	
+	UFUNCTION(BlueprintCallable, Category = "ALS|Animation Instance", Meta = (BlueprintThreadSafe))
+	void RefreshSwimmingVelocityBlend();
 #pragma endregion 
 };

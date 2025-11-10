@@ -9,6 +9,9 @@ struct ALS_API FAlsRagdollingState
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	bool bGrounded{false};
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
+	bool bInWater{false};
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	FVector Velocity{ForceInit};

@@ -28,6 +28,11 @@ FGameplayTagContainer UAlsUtility::GetChildTags(const FGameplayTag& Tag)
 	return UGameplayTagsManager::Get().RequestGameplayTagChildren(Tag);
 }
 
+FGameplayTag UAlsUtility::GetDirectParentTag(const FGameplayTag& Tag)
+{
+	return UGameplayTagsManager::Get().RequestGameplayTagDirectParent(Tag);
+}
+
 FName UAlsUtility::GetSimpleTagName(const FGameplayTag& Tag)
 {
 	const auto TagNode{UGameplayTagsManager::Get().FindTagNode(Tag)};

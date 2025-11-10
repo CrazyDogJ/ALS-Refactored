@@ -4,12 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "AlsCharacterMovementComponent.h"
-#include "AlsMovementSettings_Extend.h"
+#include "Settings/AlsMovementSettings_Extend.h"
 #include "SwingRopeActor.h"
-#include "WaterInfoForSwim.h"
+#include "Utility/WaterInfoForSwim.h"
 #include "WaterBodyComponent.h"
 #include "AlsCharacterMovementComponent_Extend.generated.h"
 
+class UAlsCapsuleSizeSettings;
 class AAlsCharacter_Extend;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
@@ -40,17 +41,26 @@ private:
 
 	UFUNCTION(BlueprintPure, Category = "Character Movement: Swimming")
 	FWaterInfoForSwim GetWaterInfoForSwim() const;
+
+	void GetDefaultUnscaledCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius) const;
+	void GetDefaultScaledCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius) const;
+	void GetUnscaledCrouchHalfHeight(float& OutCapsuleHalfHeight) const;
 	
 public:
 	// Override the properties
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
 	TObjectPtr<UAlsMovementSettings_Extend> MovementSettings_Extend;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
+	TObjectPtr<UAlsCapsuleSizeSettings> CapsuleSizeSettings;
 	
 	// Sets default values for this component's properties
 	UAlsCharacterMovementComponent_Extend();
 
+	// Fix crouch half height adjust Start
 	virtual void Crouch(bool bClientSimulation = false) override;
 	virtual void UnCrouch(bool bClientSimulation) override;
+	// Fix crouch half height adjust End
 	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Movement)
 	bool bPhysicsVolumeAffectMovement = false;
@@ -80,10 +90,11 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Character Movement: Swimming")
 	uint8 bWantsToJumpOutOfWater : 1;
 
-	void GetWaterSplineKey(FVector Location, TMap<const UWaterBodyComponent*, float>& OutMap, TMap<const UWaterBodyComponent*, float>& OutSegmentMap) const;
-
 	UFUNCTION(BlueprintCallable)
-	TArray<UWaterBodyComponent*> GetWaterBodyComponents() const;
+	UWaterBodyComponent* GetCurrentWaterBodyComponent() const;
+
+	void EnterSwimming();
+	void ExitSwimming();
 
 	UPROPERTY(Transient)
 	bool bJumpInputUnderWater = false;

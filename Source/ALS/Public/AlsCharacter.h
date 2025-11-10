@@ -141,7 +141,7 @@ public:
 
 	virtual void Restart() override;
 
-	virtual void GetDefaultCapsule(float& OutCapsuleScaleZ, float& OutCapsuleHalfHeight, float& OutCapsuleRadius);
+	virtual void GetDefaultCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius);
 
 public:
 	const UAlsCharacterSettings* GetSettings() const;
@@ -165,6 +165,8 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
 	void OnViewModeChanged(const FGameplayTag& PreviousViewMode);
+
+	virtual void NotifyViewModeChanged(const FGameplayTag& PreviousViewMode);
 	
 private:
 	void SetViewMode(const FGameplayTag& NewViewMode, bool bSendRpc);
@@ -278,16 +280,15 @@ public:
 
 public:
 	const FGameplayTag& GetStance() const;
-
-protected:
+	
 	void SetStance(const FGameplayTag& NewStance);
 
-	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	virtual void NotifyStanceChanged(const FGameplayTag& PreviousStance);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
 	void OnStanceChanged(const FGameplayTag& PreviousStance);
 
 	// Desired Gait
-
-public:
 	const FGameplayTag& GetDesiredGait() const;
 
 	UFUNCTION(BlueprintCallable, Category = "ALS|Character", Meta = (AutoCreateRefTerm = "NewDesiredGait"))
@@ -316,7 +317,9 @@ public:
 protected:
 	void SetGait(const FGameplayTag& NewGait);
 
-	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	virtual void NotifyGaitChanged(const FGameplayTag& PreviousGait);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
 	void OnGaitChanged(const FGameplayTag& PreviousGait);
 	
 	// Overlay Mode
@@ -403,18 +406,18 @@ public:
 	const FAlsLocomotionState& GetLocomotionState() const;
 
 	virtual void RefreshVelocityYawAngle();
-	
-private:
+
 	void SetDesiredVelocityYawAngle(float NewVelocityYawAngle);
-
-	void RefreshLocomotionEarly();
-
-	void RefreshLocomotion();
-
-	void RefreshLocomotionLate();
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetInitialVelocityYawAngle(float NewVelocityYawAngle);
+
+	virtual void RefreshLocomotion();
+	
+private:
+	void RefreshLocomotionEarly();
+
+	void RefreshLocomotionLate();
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastSetInitialVelocityYawAngle(float NewVelocityYawAngle);
@@ -603,7 +606,7 @@ private:
 
 	void RefreshRagdolling(float DeltaTime);
 
-	FVector RagdollTraceGround(bool& bGrounded);
+	FVector RagdollTraceDownwardState();
 
 	void ConstraintRagdollSpeed() const;
 

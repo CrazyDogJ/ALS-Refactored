@@ -447,6 +447,11 @@ void AAlsCharacter::SetViewMode(const FGameplayTag& NewViewMode)
 	SetViewMode(NewViewMode, true);
 }
 
+void AAlsCharacter::NotifyViewModeChanged(const FGameplayTag& PreviousViewMode)
+{
+	OnViewModeChanged(PreviousViewMode);
+}
+
 void AAlsCharacter::SetViewMode(const FGameplayTag& NewViewMode, const bool bSendRpc)
 {
 	if (ViewMode == NewViewMode || GetLocalRole() < ROLE_AutonomousProxy)
@@ -459,7 +464,7 @@ void AAlsCharacter::SetViewMode(const FGameplayTag& NewViewMode, const bool bSen
 
 	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ViewMode, this)
 
-	OnViewModeChanged(PreViewMode);
+	NotifyViewModeChanged(PreViewMode);
 	
 	if (bSendRpc)
 	{
@@ -789,6 +794,11 @@ void AAlsCharacter::SetDesiredStance(const FGameplayTag& NewDesiredStance)
 
 void AAlsCharacter::SetDesiredStance(const FGameplayTag& NewDesiredStance, const bool bSendRpc)
 {
+	if (!GetController())
+	{
+		return;
+	}
+	
 	if (GetController()->IsMoveInputIgnored())
 	{
 		return;
@@ -911,11 +921,14 @@ void AAlsCharacter::SetStance(const FGameplayTag& NewStance)
 
 		Stance = NewStance;
 
-		OnStanceChanged(PreviousStance);
+		NotifyStanceChanged(PreviousStance);
 	}
 }
 
-void AAlsCharacter::OnStanceChanged_Implementation(const FGameplayTag& PreviousStance) {}
+void AAlsCharacter::NotifyStanceChanged(const FGameplayTag& PreviousStance)
+{
+	OnStanceChanged(PreviousStance);
+}
 
 void AAlsCharacter::SetDesiredGait(const FGameplayTag& NewDesiredGait)
 {
@@ -964,11 +977,14 @@ void AAlsCharacter::SetGait(const FGameplayTag& NewGait)
 
 		Gait = NewGait;
 
-		OnGaitChanged(PreviousGait);
+		NotifyGaitChanged(PreviousGait);
 	}
 }
 
-void AAlsCharacter::OnGaitChanged_Implementation(const FGameplayTag& PreviousGait) {}
+void AAlsCharacter::NotifyGaitChanged(const FGameplayTag& PreviousGait)
+{
+	OnGaitChanged(PreviousGait);
+}
 
 void AAlsCharacter::RefreshGait()
 {
@@ -1586,6 +1602,12 @@ void AAlsCharacter::RefreshGroundedRotation(const float DeltaTime)
 			return;
 		}
 
+		if (RotationMode == AlsRotationModeTags::Aiming || ViewMode == AlsViewModeTags::FirstPerson)
+		{
+			RefreshGroundedAimingRotation(DeltaTime);
+			return;
+		}
+		
 		if (RotationMode == AlsRotationModeTags::VelocityDirection)
 		{
 			float TargetYawAngle;
@@ -1639,12 +1661,6 @@ void AAlsCharacter::RefreshGroundedRotation(const float DeltaTime)
 			static constexpr auto TargetYawAngleRotationSpeed{500.0f};
 
 			SetRotationExtraSmooth(TargetYawAngle, DeltaTime, RotationInterpolationHalfLife, TargetYawAngleRotationSpeed);
-			return;
-		}
-
-		if (RotationMode == AlsRotationModeTags::Aiming || ViewMode == AlsViewModeTags::FirstPerson)
-		{
-			RefreshGroundedAimingRotation(DeltaTime);
 			return;
 		}
 

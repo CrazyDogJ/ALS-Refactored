@@ -51,3 +51,11 @@ UAlsAnimationInstance_Extend* UAlsLinkedAnimationInstance_Extend::GetParentExten
 {
 	return ParentExtend.Get();
 }
+
+void UAlsLinkedAnimationInstance_Extend::RefreshSwimmingVelocityBlend()
+{
+	if (Parent.IsValid())
+	{
+		ParentExtend->RefreshSwimmingVelocityBlend();
+	}
+}

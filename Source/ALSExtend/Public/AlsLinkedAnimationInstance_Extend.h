@@ -39,4 +39,7 @@ protected:
 	UFUNCTION(BlueprintPure, Category = "ALS|Linked Animation Instance",
 		Meta = (BlueprintThreadSafe, ReturnDisplayName = "Parent"))
 	UAlsAnimationInstance_Extend* GetParentExtend() const;
+	
+	UFUNCTION(BlueprintCallable, Category = "ALS|Linked Animation Instance", Meta = (BlueprintThreadSafe))
+	void RefreshSwimmingVelocityBlend();
 };

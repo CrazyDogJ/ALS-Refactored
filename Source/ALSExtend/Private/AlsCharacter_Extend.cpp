@@ -3,21 +3,50 @@
 
 #include "AlsCharacter_Extend.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "AIController.h"
 #include "AlsAnimationInstance.h"
 #include "AlsAnimationInstance_Extend.h"
 #include "AlsCharacterMovementComponent_Extend.h"
-#include "CustomMovementMode.h"
+#include "Utility/CustomMovementMode.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Settings/AlsCharacterSettings.h"
-#include "AlsGameplayTags_Extend.h"
+#include "Utility/AlsGameplayTags_Extend.h"
 #include "WaterBodyActor.h"
 #include "Engine/OverlapResult.h"
+#include "Utility/AlsConstants.h"
 #include "Utility/AlsVector.h"
+
+void AAlsCharacter_Extend::OnConstruction(const FTransform& Transform)
+{
+	// Pass current movement settings to the movement component.
+	RuntimeMovementSettings = DuplicateObject(MovementSettings, this);
+	MovementComponent_Extend->MovementSettings = RuntimeMovementSettings;
+
+	RuntimeMovementSettings_Extend = DuplicateObject(MovementSettings_Extend, this);
+	MovementComponent_Extend->MovementSettings_Extend = RuntimeMovementSettings_Extend;
+
+	RuntimeCapsuleSizeSettings = DuplicateObject(CapsuleSizeSettings, this);
+	MovementComponent_Extend->CapsuleSizeSettings = RuntimeCapsuleSizeSettings;
+	
+	Super::OnConstruction(Transform);
+	
+	// Init capsule size.
+	if (CapsuleSizeSettings)
+	{
+		bool bValid;
+		const auto Found = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);
+		if (bValid)
+		{
+			GetCapsuleComponent()->SetCapsuleSize(Found.CapsuleRadius, Found.CapsuleHalfHeight);
+			UpdateMeshRelativeLocation(Found.CapsuleHalfHeight);
+		}
+	}
+}
 
 void AAlsCharacter_Extend::CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo)
 {
@@ -115,61 +144,59 @@ void AAlsCharacter_Extend::Tick(float DeltaSeconds)
 	}
 }
 
-bool AAlsCharacter_Extend::CanSprint() const
-{
-	if (GetMovementComponent()->IsSwimming())
-	{
-		return true;
-	}
-	return Super::CanSprint();
-}
-
-float AAlsCharacter_Extend::GetDefaultHalfHeight() const
-{
-	return MovementComponent_Extend->DefaultStandHalfHeight;
-}
-
 void AAlsCharacter_Extend::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	//ALS
 	auto* PredictionData{GetCharacterMovement()->GetPredictionData_Client_Character()};
 
 	if (PredictionData != nullptr && GetLocalRole() <= ROLE_SimulatedProxy &&
 		ScaledHalfHeightAdjust > 0.0f && IsPlayingNetworkedRootMotionMontage())
 	{
-		// The code below essentially undoes the changes that will be made later at the end of the UCharacterMovementComponent::Crouch()
-		// function because they literally break network smoothing when crouching while the root motion montage is playing, causing the
-		// mesh to take an incorrect location for a while.
-
-		// TODO Check the need for this fix in future engine versions.
+		// The code below essentially undoes the changes that will be made later at the end of the
+		// UCharacterMovementComponent::Crouch() function because they literally break network smoothing when crouching
+		// while the root motion montage is playing, causing the  mesh to take an incorrect location for a while.
+		// TODO Wait for https://github.com/EpicGames/UnrealEngine/pull/10373 to be merged into the engine.
 
 		PredictionData->MeshTranslationOffset.Z += ScaledHalfHeightAdjust;
 		PredictionData->OriginalMeshTranslationOffset = PredictionData->MeshTranslationOffset;
 	}
 
-	//Engine
 	RecalculateBaseEyeHeight();
+
+	bool bValid;
+	const auto FoundSettings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
 	
-	if (GetMesh())
+	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
+	if (bValid)
 	{
-		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-		MeshRelativeLocation.Z = -MovementComponent_Extend->DefaultStandHalfHeight + HalfHeightAdjust;
-		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+		BaseTranslationOffset.Z = FoundSettings.CapsuleHalfHeight * -1.0f;
+
+		if (GetMesh() && DefaultChar->GetMesh())
+		{
+			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+			MeshRelativeLocation.Z = BaseTranslationOffset.Z;
+		}
 	}
 	else
 	{
-		BaseTranslationOffset.Z = -MovementComponent_Extend->DefaultStandHalfHeight + HalfHeightAdjust;
+		if (GetMesh() && DefaultChar->GetMesh())
+        {
+        	FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+        	MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z + HalfHeightAdjust;
+        	BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+        }
+        else
+        {
+        	BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z + HalfHeightAdjust;
+        }
 	}
-
+	
 	K2_OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
-	//ALS
 	SetStance(AlsStanceTags::Crouching);
 }
 
 void AAlsCharacter_Extend::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	//Als
 	auto* PredictionData{GetCharacterMovement()->GetPredictionData_Client_Character()};
 
 	if (PredictionData != nullptr && GetLocalRole() <= ROLE_SimulatedProxy &&
@@ -181,30 +208,40 @@ void AAlsCharacter_Extend::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfH
 		PredictionData->OriginalMeshTranslationOffset = PredictionData->MeshTranslationOffset;
 	}
 
-	//Engine
 	RecalculateBaseEyeHeight();
 
-	if (GetMesh())
+	bool bValid;
+	const auto FoundSettings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);
+
+	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
+	if (bValid)
 	{
-		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-		MeshRelativeLocation.Z = -MovementComponent_Extend->DefaultStandHalfHeight;
-		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+		BaseTranslationOffset.Z = FoundSettings.CapsuleHalfHeight * -1.0f;
+		
+		if (GetMesh() && DefaultChar->GetMesh())
+		{
+			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+			MeshRelativeLocation.Z = BaseTranslationOffset.Z;
+		}
 	}
 	else
 	{
-		BaseTranslationOffset.Z = -MovementComponent_Extend->DefaultStandHalfHeight;
+		// Default
+		if (GetMesh() && DefaultChar->GetMesh())
+		{
+			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+			MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z + 10.0f;
+			BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+		}
+		else
+		{
+			BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z;
+		}
 	}
-
+	
 	K2_OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
-	//ALS
 	SetStance(AlsStanceTags::Standing);
-
-	//My changed
-	if (MovementComponent_Extend->IsSwimming())
-	{
-		GetCapsuleComponent()->SetCapsuleSize(RuntimeMovementSettings_Extend->SwimmingSettings.SwimCapsuleRadius, RuntimeMovementSettings_Extend->SwimmingSettings.SwimCapsuleHalfHeight);
-	}
 }
 
 void AAlsCharacter_Extend::PossessedBy(AController* NewController)
@@ -217,6 +254,7 @@ void AAlsCharacter_Extend::PossessedBy(AController* NewController)
 		if (AbilitySystemComponent.IsValid())
 		{
 			AbilitySystemComponent->InitAbilityActorInfo(PS, this);
+			InitGameplayTagInASC();
 			GameplayTagBlueprintPropertyMap.Initialize(this, AbilitySystemComponent.Get());
 		}
 	}
@@ -290,26 +328,24 @@ FGameplayTag AAlsCharacter_Extend::CalculateActualGait(const FGameplayTag& MaxAl
 {
 	if (LocomotionMode == AlsLocomotionModeTags::Swimming)
 	{
-		if (LocomotionState.Speed < RuntimeMovementSettings_Extend->SwimmingSettings.RunSpeed + 10.0f)
+		if (LocomotionState.Speed < RuntimeMovementSettings_Extend->SwimmingSettings.RunSpeed + 10.0f
+			|| MaxAllowedGait != AlsGaitTags::Sprinting)
 		{
 			return AlsGaitTags::Running;
 		}
-		if (MovementComponent_Extend->GetCurrentAcceleration().Length() > 0 && DesiredGait == AlsGaitTags::Sprinting)
-		{
-			return AlsGaitTags::Sprinting;
-		}
+		
+		return AlsGaitTags::Sprinting;
 	}
 	
 	if (LocomotionMode == AlsLocomotionModeTags::Flying)
 	{
-		if (LocomotionState.Speed < MovementComponent_Extend->MaxFlySpeed + 10.0f)
+		if (LocomotionState.Speed < MovementComponent_Extend->MaxFlySpeed + 10.0f
+			|| MaxAllowedGait != AlsGaitTags::Sprinting)
 		{
 			return AlsGaitTags::Running;
 		}
-		if (MovementComponent_Extend->GetCurrentAcceleration().Length() > 0 && LocomotionState.Speed <= GetMovementComponent()->GetMaxSpeed())
-		{
-			return AlsGaitTags::Sprinting;
-		}
+		
+		return AlsGaitTags::Sprinting;
 	}
 	
 	return Super::CalculateActualGait(MaxAllowedGait);
@@ -349,6 +385,13 @@ void AAlsCharacter_Extend::OnMovementModeChanged(EMovementMode PrevMovementMode,
 	}
 }
 
+void AAlsCharacter_Extend::NotifyLocomotionModeChanged(const FGameplayTag& PreviousLocomotionMode)
+{
+	Super::NotifyLocomotionModeChanged(PreviousLocomotionMode);
+
+	SetGameplayTagInASC(LocomotionMode);
+}
+
 void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction)
 {
 	Super::NotifyLocomotionActionChanged(PreviousLocomotionAction);
@@ -370,11 +413,39 @@ void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag& Pre
 			GetCharacterMovement()->SetMovementMode(MOVE_Falling);
 		}
 	}
+
+	SetGameplayTagInASC(LocomotionAction, AlsLocomotionActionTags::LocomotionActionParent);
+}
+
+void AAlsCharacter_Extend::NotifyRotationModeChanged(const FGameplayTag& PreviousRotationMode)
+{
+	Super::NotifyRotationModeChanged(PreviousRotationMode);
+
+	SetGameplayTagInASC(RotationMode);
+}
+
+void AAlsCharacter_Extend::NotifyStanceChanged(const FGameplayTag& PreviousStance)
+{
+	Super::NotifyStanceChanged(PreviousStance);
+
+	SetGameplayTagInASC(Stance);
+}
+
+void AAlsCharacter_Extend::NotifyGaitChanged(const FGameplayTag& PreviousGait)
+{
+	Super::NotifyGaitChanged(PreviousGait);
+
+	SetGameplayTagInASC(Gait);
+	
+	if (Gait == AlsGaitTags::Sprinting)
+	{
+		MovementComponent_Extend->TryClimbDashing();
+	}
 }
 
 bool AAlsCharacter_Extend::IsRagdollingAllowedToStop() const
 {
-	return LocomotionAction == AlsLocomotionActionTags::Ragdolling && (RagdollingState.bGrounded || MovementComponent_Extend->GetWaterInfoForSwim().WaterBodyIdx >= 0);
+	return LocomotionAction == AlsLocomotionActionTags::Ragdolling && (RagdollingState.bGrounded || RagdollingState.bInWater);
 }
 
 bool AAlsCharacter_Extend::IsRollingAllowedToStart(const UAnimMontage* Montage) const
@@ -393,13 +464,6 @@ void AAlsCharacter_Extend::PostInitializeComponents()
 
 	MovementComponent_Extend->OnPhysicsRotation.AddUObject(this, &ThisClass::CharacterMovement_OnPhysicsRotation);
 
-	// Pass current movement settings to the movement component.
-	RuntimeMovementSettings = DuplicateObject(MovementSettings, nullptr);
-	MovementComponent_Extend->MovementSettings = RuntimeMovementSettings;
-
-	RuntimeMovementSettings_Extend = DuplicateObject(MovementSettings_Extend, nullptr);
-	MovementComponent_Extend->MovementSettings_Extend = RuntimeMovementSettings_Extend;
-
 	AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
 
 	ACharacter::PostInitializeComponents();
@@ -413,8 +477,7 @@ void AAlsCharacter_Extend::RefreshRotationMode()
 		return;
 	}
 
-	if (LocomotionMode == AlsLocomotionModeTags::Swimming ||
-		LocomotionMode == AlsLocomotionModeTags::Flying ||
+	if (LocomotionMode == AlsLocomotionModeTags::Flying ||
 		LocomotionMode == AlsLocomotionModeTags::Sliding)
 	{
 		SetRotationMode(AlsRotationModeTags::VelocityDirection);
@@ -601,10 +664,6 @@ bool AAlsCharacter_Extend::IsAllowRunning_Implementation() const
 
 bool AAlsCharacter_Extend::IsAllowSprinting_Implementation() const
 {
-	if (GetMovementComponent()->IsSwimming())
-	{
-		return true;
-	}
 	return Super::CanSprint();
 }
 
@@ -704,40 +763,76 @@ void AAlsCharacter_Extend::RefreshSwimmingRotation(float DeltaTime)
 
 		ApplyRotationYawSpeedAnimationCurve(DeltaTime);
 
-		float TargetYawAngle;
-
-		if (LocomotionState.bRotationTowardsLastInputDirectionBlocked)
+		if (RotationMode == AlsRotationModeTags::Aiming || ViewMode == AlsViewModeTags::FirstPerson)
 		{
-			// Rotate to the last target yaw angle, relative to the movement base or not.
+			RefreshGroundedAimingRotation(DeltaTime);
+			return;
+		}
+		
+		if (RotationMode == AlsRotationModeTags::VelocityDirection)
+		{
+			float TargetYawAngle;
 
-			TargetYawAngle = LocomotionState.TargetYawAngle;
-
-			if (MovementBase.bHasRelativeLocation && !MovementBase.bHasRelativeRotation &&
-				Settings->bInheritMovementBaseRotationInVelocityDirectionRotationMode)
+			if (LocomotionState.bRotationTowardsLastInputDirectionBlocked)
 			{
-				TargetYawAngle = UE_REAL_TO_FLOAT(TargetYawAngle + MovementBase.DeltaRotation.Yaw);
+				// Rotate to the last target yaw angle, relative to the movement base or not.
+
+				TargetYawAngle = LocomotionState.TargetYawAngle;
+
+				if (MovementBase.bHasRelativeLocation && !MovementBase.bHasRelativeRotation &&
+				    Settings->bInheritMovementBaseRotationInVelocityDirectionRotationMode)
+				{
+					TargetYawAngle = UE_REAL_TO_FLOAT(TargetYawAngle + MovementBase.DeltaRotation.Yaw);
+				}
 			}
+			else
+			{
+				// Rotate to the last velocity direction. Rotation of the movement
+				// base handled in the AAlsCharacter::RefreshLocomotionEarly() function.
+
+				TargetYawAngle = Settings->bRotateTowardsDesiredVelocityInVelocityDirectionRotationMode
+					                 ? DesiredVelocityYawAngle
+					                 : LocomotionState.VelocityYawAngle;
+			}
+
+			static constexpr auto RotationInterpolationHalfLife{0.1f};
+			static constexpr auto TargetYawAngleRotationSpeed{800.0f};
+
+			SetRotationExtraSmooth(TargetYawAngle, DeltaTime, RotationInterpolationHalfLife, TargetYawAngleRotationSpeed);
+			return;
 		}
-		else
+
+		if (RotationMode == AlsRotationModeTags::ViewDirection)
 		{
-			// Rotate to the last velocity direction. Rotation of the movement
-			// base handled in the AAlsCharacter::RefreshLocomotionEarly() function.
+			if ((!LocomotionState.bHasInput && LocomotionState.bRotationTowardsLastInputDirectionBlocked) ||
+			    !Settings->bAutoRotateOnAnyInputWhileNotMovingInViewDirectionRotationMode)
+			{
+				RefreshTargetYawAngleUsingActorRotation();
+				return;
+			}
 
-			TargetYawAngle = Settings->bRotateTowardsDesiredVelocityInVelocityDirectionRotationMode
-								 ? DesiredVelocityYawAngle
-								 : LocomotionState.VelocityYawAngle;
+			// Rotate to the last view direction.
+
+			const auto TargetYawAngle{
+				LocomotionState.bHasInput ? UE_REAL_TO_FLOAT(ViewState.Rotation.Yaw) : LocomotionState.TargetYawAngle
+			};
+
+			const auto RotationInterpolationHalfLife{CalculateGroundedMovingRotationInterpolationHalfLife()};
+
+			static constexpr auto TargetYawAngleRotationSpeed{500.0f};
+
+			SetRotationExtraSmooth(TargetYawAngle, DeltaTime, RotationInterpolationHalfLife, TargetYawAngleRotationSpeed);
+			return;
 		}
 
-		static constexpr auto RotationInterpolationSpeed{12.0f};
-		static constexpr auto TargetYawAngleRotationSpeed{800.0f};
-
-		SetRotationExtraSmooth(TargetYawAngle, DeltaTime, RotationInterpolationSpeed, TargetYawAngleRotationSpeed);
+		RefreshTargetYawAngleUsingActorRotation();
 		return;
 	}
 
 	// Moving.
 
-	if (LocomotionState.bHasInput || !LocomotionState.bRotationTowardsLastInputDirectionBlocked)
+	if (RotationMode == AlsRotationModeTags::VelocityDirection &&
+		(LocomotionState.bHasInput || !LocomotionState.bRotationTowardsLastInputDirectionBlocked))
 	{
 		LocomotionState.bRotationTowardsLastInputDirectionBlocked = false;
 
@@ -755,6 +850,37 @@ void AAlsCharacter_Extend::RefreshSwimmingRotation(float DeltaTime)
 		return;
 	}
 
+	if (RotationMode == AlsRotationModeTags::ViewDirection &&
+		(LocomotionState.bHasInput || !LocomotionState.bRotationTowardsLastInputDirectionBlocked))
+	{
+		LocomotionState.bRotationTowardsLastInputDirectionBlocked = false;
+
+		float TargetYawAngle;
+
+		if (Gait == AlsGaitTags::Sprinting)
+		{
+			TargetYawAngle = LocomotionState.VelocityYawAngle;
+		}
+		else
+		{
+			TargetYawAngle = UE_REAL_TO_FLOAT(
+				ViewState.Rotation.Yaw + GetMesh()->GetAnimInstance()->GetCurveValue(UAlsConstants::RotationYawOffsetCurveName()));
+		}
+
+		const auto RotationInterpolationHalfLife{CalculateGroundedMovingRotationInterpolationHalfLife()};
+
+		static constexpr auto TargetYawAngleRotationSpeed{500.0f};
+
+		SetRotationExtraSmooth(TargetYawAngle, DeltaTime, RotationInterpolationHalfLife, TargetYawAngleRotationSpeed);
+		return;
+	}
+	
+	if (RotationMode == AlsRotationModeTags::Aiming)
+	{
+		RefreshGroundedAimingRotation(DeltaTime);
+		return;
+	}
+	
 	RefreshTargetYawAngleUsingActorRotation();
 }
 
@@ -766,6 +892,32 @@ void AAlsCharacter_Extend::RefreshGlidingRotation(float DeltaTime)
 	}
 
 	SetRotationSmooth(LocomotionState.VelocityYawAngle, DeltaTime, RuntimeMovementSettings_Extend->GlidingSettings.GlideRotationInterpSpeed);
+}
+
+void AAlsCharacter_Extend::UpdateMeshRelativeLocation(float HalfHeight, bool bShouldMoveComp /** = false*/)
+{
+	//ALS Prediction Data Fix
+	auto* PredictionData{GetCharacterMovement()->GetPredictionData_Client_Character()};
+	if (PredictionData != nullptr && GetLocalRole() <= ROLE_SimulatedProxy && IsPlayingNetworkedRootMotionMontage())
+	{
+		PredictionData->MeshTranslationOffset.Z = HalfHeight * -1.0f;
+		PredictionData->OriginalMeshTranslationOffset = PredictionData->MeshTranslationOffset;
+	}
+
+	FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+	MeshRelativeLocation.Z = HalfHeight * -1.0f;
+	
+	//Engine
+	RecalculateBaseEyeHeight();
+
+	const auto OldTranslationZ = BaseTranslationOffset.Z;
+	BaseTranslationOffset.Z = HalfHeight * -1.0f;
+
+	if (bShouldMoveComp)
+	{
+		GetCapsuleComponent()->MoveComponent((BaseTranslationOffset.Z - OldTranslationZ) * GetGravityDirection(),
+			GetCapsuleComponent()->GetComponentQuat(), true, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
+	}
 }
 
 void AAlsCharacter_Extend::SetViewState(FAlsViewState InViewState)
@@ -818,40 +970,6 @@ void AAlsCharacter_Extend::AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAs
 	AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
 }
 
-void AAlsCharacter_Extend::SetDefaultStandHalfHeight(float InValue)
-{
-	auto Movement = Cast<UAlsCharacterMovementComponent_Extend>(GetCharacterMovement());
-	if (Movement->DefaultStandHalfHeight == InValue && GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == InValue && GetMesh()->GetRelativeLocation().Z == -InValue)
-	{
-		return;
-	}
-	
-	Movement->DefaultStandHalfHeight = InValue;
-	
-	if ((Movement->MovementMode == MOVE_Walking && !Movement->IsCrouching()) || IsRunningUserConstructionScript())
-	{
-		GetCapsuleComponent()->SetCapsuleHalfHeight(Movement->DefaultStandHalfHeight);
-		GetMesh()->SetRelativeLocation(FVector(0,0,-Movement->DefaultStandHalfHeight));
-		BaseTranslationOffset.Z = -Movement->DefaultStandHalfHeight;
-	}
-}
-
-void AAlsCharacter_Extend::SetDefaultStandRadius(float InValue)
-{
-	auto Movement = Cast<UAlsCharacterMovementComponent_Extend>(GetCharacterMovement());
-	if (Movement->DefaultStandRadius == InValue && GetCapsuleComponent()->GetUnscaledCapsuleRadius() == InValue)
-	{
-		return;
-	}
-	
-	Movement->DefaultStandRadius = InValue;
-
-	if (GetCharacterMovement()->MovementMode == MOVE_Walking || IsRunningUserConstructionScript())
-	{
-		GetCapsuleComponent()->SetCapsuleRadius(Movement->DefaultStandRadius);
-	}
-}
-
 void AAlsCharacter_Extend::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                      UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
 {
@@ -901,6 +1019,43 @@ bool AAlsCharacter_Extend::StartMantlingGliding()
 {
 	return LocomotionMode == AlsLocomotionModeTags::Gliding && IsLocallyControlled() &&
 		   StartMantling(Settings->Mantling.InAirTrace); 
+}
+
+void AAlsCharacter_Extend::SetGameplayTagInASC(const FGameplayTag& AlsTag, const FGameplayTag& AlsParentTag)
+{
+	if (!GetAbilitySystemComponent()) return;
+	
+	const auto ParentTag = AlsParentTag.IsValid() ? AlsParentTag : AlsTag.RequestDirectParent();
+	if (!ParentTag.IsValid()) return;
+	
+	const auto ParentTagChildren = UGameplayTagsManager::Get().RequestGameplayTagChildren(ParentTag);
+	const auto FilteredChildren = ParentTagChildren.Filter(GetAbilitySystemComponent()->GetOwnedGameplayTags());
+	if (!FilteredChildren.IsEmpty())
+	{
+		UAbilitySystemBlueprintLibrary::RemoveLooseGameplayTags(this, FilteredChildren, true);
+	}
+	UAbilitySystemBlueprintLibrary::AddLooseGameplayTags(this, FGameplayTagContainer(AlsTag), true);
+}
+
+void AAlsCharacter_Extend::InitGameplayTagInASC()
+{
+	SetGameplayTagInASC(ViewMode);
+	SetGameplayTagInASC(LocomotionMode);
+	SetGameplayTagInASC(RotationMode);
+	SetGameplayTagInASC(Stance);
+	SetGameplayTagInASC(Gait);
+	SetGameplayTagInASC(LocomotionAction);
+}
+
+float AAlsCharacter_Extend::GetScaledRadius(float UnscaledRadius) const
+{
+	const FVector& ComponentScale = GetCapsuleComponent()->GetComponentTransform().GetScale3D();
+	return UnscaledRadius * UE_REAL_TO_FLOAT(ComponentScale.X < ComponentScale.Y ? ComponentScale.X : ComponentScale.Y);
+}
+
+float AAlsCharacter_Extend::GetScaledHaleHeight(float UnscaledHalfHeight) const
+{
+	return UnscaledHalfHeight * UE_REAL_TO_FLOAT(GetCapsuleComponent()->GetComponentTransform().GetScale3D().Z);
 }
 
 void AAlsCharacter_Extend::TurnInPlaceImmediately_Implementation()
@@ -993,13 +1148,74 @@ void AAlsCharacter_Extend::RefreshGait()
 	SetGait(ActualGait);
 }
 
-void AAlsCharacter_Extend::OnGaitChanged_Implementation(const FGameplayTag& PreviousGait)
+void AAlsCharacter_Extend::RefreshLocomotion()
 {
-	Super::OnGaitChanged_Implementation(PreviousGait);
-
-	if (Gait == AlsGaitTags::Sprinting)
+	if (LocomotionMode == AlsLocomotionModeTags::Swimming)
 	{
-		MovementComponent_Extend->TryClimbDashing();
+		const auto bHadVelocity{LocomotionState.bHasVelocity};
+
+		LocomotionState.Velocity = GetVelocity();
+	
+		// Determine if the character is moving by getting its speed. The speed equals the length
+		// of the horizontal velocity, so it does not take vertical movement into account. If the
+		// character is moving, update the last velocity rotation. This value is saved because it might
+		// be useful to know the last orientation of a movement even after the character has stopped.
+	
+		LocomotionState.Speed = UE_REAL_TO_FLOAT(LocomotionState.Velocity.Size());
+	
+		static constexpr auto HasSpeedThreshold{1.0f};
+	
+		LocomotionState.bHasVelocity = LocomotionState.Speed >= HasSpeedThreshold;
+	
+		RefreshVelocityYawAngle();
+	
+		if (GetLocalRole() >= ROLE_AutonomousProxy)
+		{
+			auto bSendInitialVelocityYawAngle{LocomotionState.bHasVelocity && !bHadVelocity};
+			auto VelocityYawAngleToSend{LocomotionState.VelocityYawAngle};
+	
+			if (Settings->bRotateTowardsDesiredVelocityInVelocityDirectionRotationMode)
+			{
+				FVector DesiredVelocity;
+				if (AlsCharacterMovement->TryConsumePrePenetrationAdjustmentVelocity(DesiredVelocity) &&
+				    DesiredVelocity.Size2D() >= HasSpeedThreshold)
+				{
+					bSendInitialVelocityYawAngle = !bHasDesiredVelocity;
+					bHasDesiredVelocity = true;
+	
+					SetDesiredVelocityYawAngle(UE_REAL_TO_FLOAT(UAlsVector::DirectionToAngleXY(DesiredVelocity)));
+				}
+				else
+				{
+					bSendInitialVelocityYawAngle = LocomotionState.bHasVelocity && !bHasDesiredVelocity;
+					bHasDesiredVelocity = LocomotionState.bHasVelocity;
+	
+					SetDesiredVelocityYawAngle(LocomotionState.VelocityYawAngle);
+				}
+	
+				VelocityYawAngleToSend = DesiredVelocityYawAngle;
+			}
+	
+			// Implicitly send the initial velocity yaw angle from the owning client to other clients,
+			// since VelocityYawAngle changes are not always detected on the server for very short moves.
+	
+			if (bSendInitialVelocityYawAngle &&
+			    (GetLocalRole() == ROLE_AutonomousProxy ||
+			     GetRemoteRole() == ROLE_SimulatedProxy ||
+			     (IsNetMode(NM_ListenServer) && IsLocallyControlled())))
+			{
+				ServerSetInitialVelocityYawAngle(VelocityYawAngleToSend);
+			}
+		}
+	
+		// Character is moving if has speed and current acceleration, or if the speed is greater than the moving speed threshold.
+	
+		LocomotionState.bMoving = (LocomotionState.bHasInput && LocomotionState.bHasVelocity) ||
+		                          LocomotionState.Speed > Settings->MovingSpeedThreshold;
+	}
+	else
+	{
+		Super::RefreshLocomotion();
 	}
 }
 
@@ -1016,6 +1232,19 @@ void AAlsCharacter_Extend::RefreshVelocityYawAngle()
 	{
 		LocomotionState.VelocityYawAngle = UE_REAL_TO_FLOAT(GetActorRotation().Yaw);
 	}
+	else if (LocomotionMode == AlsLocomotionModeTags::Swimming)
+	{
+		// No speed and z is not zero means vertical
+		if (UE_REAL_TO_FLOAT(GetVelocity().Size2D()) < 1.0f && LocomotionState.bHasInput)
+		{
+			const auto ViewUpVector = UKismetMathLibrary::GetUpVector(ViewState.Rotation);
+			const auto ZViewUpVector = LocomotionState.Velocity.Z < 0.0f ? ViewUpVector : -ViewUpVector;
+			// Update velocity yaw angle by view up vector.
+			LocomotionState.VelocityYawAngle = UE_REAL_TO_FLOAT(UAlsVector::DirectionToAngleXY(ZViewUpVector));
+		}
+		
+		Super::RefreshVelocityYawAngle();
+	}
 	else
 	{
 		Super::RefreshVelocityYawAngle();
@@ -1031,20 +1260,53 @@ bool AAlsCharacter_Extend::IsMantlingFinalAllowedToStart_Implementation(const FA
 
 	// Get overlapping water body actors;
 	TArray<FOverlapResult> OverlapResults;
-	const float Radius = MovementSettings_Extend->SwimmingSettings.SwimCapsuleRadius;
-	const float HalfHeight = MovementSettings_Extend->SwimmingSettings.SwimCapsuleHalfHeight;
-	const TArray<AActor*> IgnoreActors {this};
-	const TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes {UEngineTypes::ConvertToObjectType(ECC_WorldStatic)};
-	TArray<AActor*> OutActors;
+	bool bValid;
+	const auto FoundSettings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
+	if (bValid)
+	{
+		const float UnscaledRadius = FoundSettings.CapsuleRadius;
+		const float UnscaledHalfHeight = FoundSettings.CapsuleHalfHeight;
+		const TArray<AActor*> IgnoreActors {this};
+		const TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes {UEngineTypes::ConvertToObjectType(ECC_WorldStatic)};
+		TArray<AActor*> OutActors;
 	
-	UKismetSystemLibrary::SphereOverlapActors(
-		GetWorld(),
-		Parameters.TargetRelativeLocation + FVector(0.0f, 0.0f, HalfHeight),
-		Radius,
-		ObjectTypes,
-		AWaterBody::StaticClass(),
-		IgnoreActors,
-		OutActors);
+		UKismetSystemLibrary::SphereOverlapActors(
+			GetWorld(),
+			Parameters.TargetRelativeLocation + FVector(0.0f, 0.0f, GetScaledHaleHeight(UnscaledHalfHeight)),
+			GetScaledRadius(UnscaledRadius),
+			ObjectTypes,
+			AWaterBody::StaticClass(),
+			IgnoreActors,
+			OutActors);
+		
+		return OutActors.Num() == 0;
+	}
 
-	return OutActors.Num() == 0;
+	return Super::IsMantlingFinalAllowedToStart_Implementation(Parameters);
+}
+
+void AAlsCharacter_Extend::GetDefaultCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius)
+{
+	// Use settings first index for default capsule size.
+	if (const auto CapsuleSettings = RuntimeCapsuleSizeSettings ? RuntimeCapsuleSizeSettings : CapsuleSizeSettings)
+	{
+		bool bValid;
+		const auto FoundSettings = CapsuleSettings->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);
+		if (bValid)
+		{
+			OutCapsuleHalfHeight = FoundSettings.CapsuleHalfHeight;
+			OutCapsuleRadius = FoundSettings.CapsuleRadius;
+			return;
+		}
+	}
+
+	// Else we use default class property.
+	Super::GetDefaultCapsule(OutCapsuleHalfHeight, OutCapsuleRadius);
+}
+
+void AAlsCharacter_Extend::NotifyViewModeChanged(const FGameplayTag& PreviousViewMode)
+{
+	Super::NotifyViewModeChanged(PreviousViewMode);
+
+	SetGameplayTagInASC(ViewMode);
 }

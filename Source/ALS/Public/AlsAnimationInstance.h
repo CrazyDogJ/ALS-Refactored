@@ -204,6 +204,10 @@ protected:
 public:
 	void SetGroundedEntryMode(const FGameplayTag& NewGroundedEntryMode);
 
+	FVector3f GetRelativeVelocity() const;
+
+	void RefreshVelocityBlend();
+	
 protected:
 	UFUNCTION(BlueprintCallable, Category = "ALS|Animation Instance", Meta = (BlueprintThreadSafe))
 	void ResetGroundedEntryMode();
@@ -216,11 +220,8 @@ protected:
 	void RefreshGrounded();
 
 private:
-	FVector3f GetRelativeVelocity() const;
 
 	FVector2f GetRelativeAccelerationAmount() const;
-
-	void RefreshVelocityBlend();
 
 	void RefreshGroundedLean();
 

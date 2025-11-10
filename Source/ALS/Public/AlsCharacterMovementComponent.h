@@ -82,12 +82,6 @@ public:
 	// bodies, but may cause some issues when interacting with simulated physical bodies.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
 	uint8 bAllowImprovedPenetrationAdjustment : 1 {true};
-
-	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Walking")
-	float DefaultStandHalfHeight = 75.0f;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Walking")
-	float DefaultStandRadius = 30.0f;
 	
 protected:
 	FAlsCharacterNetworkMoveDataContainer MoveDataContainer;

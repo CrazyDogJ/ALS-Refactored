@@ -4,9 +4,9 @@
 #include "AlsCharacterMovementComponent.h"
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
+#include "WaterBodyActor.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "Engine/NetConnection.h"
 #include "Engine/SkeletalMesh.h"
 #include "Net/Core/PushModel/PushModel.h"
 #include "RootMotionSources/AlsRootMotionSource_Mantling.h"
@@ -167,13 +167,11 @@ bool AAlsCharacter::IsMantlingAllowedToStart_Implementation() const
 	return !LocomotionAction.IsValid();
 }
 
-void AAlsCharacter::GetDefaultCapsule(float& OutCapsuleScaleZ, float& OutCapsuleHalfHeight,
-	float& OutCapsuleRadius)
+void AAlsCharacter::GetDefaultCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius)
 {
-	auto Movement = Cast<UAlsCharacterMovementComponent>(GetCharacterMovement());
-	OutCapsuleScaleZ = 1.0f;
-	OutCapsuleRadius = Movement->DefaultStandRadius;
-	OutCapsuleHalfHeight = Movement->DefaultStandHalfHeight;
+	auto DefaultChar = GetClass()->GetDefaultObject<AAlsCharacter>();
+	OutCapsuleHalfHeight = DefaultChar->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	OutCapsuleRadius = DefaultChar->GetCapsuleComponent()->GetScaledCapsuleRadius();
 }
 
 bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings)
@@ -220,8 +218,7 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 
 	float CapsuleRadius;
 	float CapsuleHalfHeight;
-	float CapsuleScaleZ;
-	GetDefaultCapsule(CapsuleScaleZ, CapsuleHalfHeight, CapsuleRadius);
+	GetDefaultCapsule(CapsuleHalfHeight, CapsuleRadius);
 	const auto CapsuleScale{GetCapsuleComponent()->GetComponentScale().Z};
 
 	const FVector CapsuleBottomLocation{ActorLocation.X, ActorLocation.Y, ActorLocation.Z - CapsuleHalfHeight};
@@ -915,8 +912,7 @@ void AAlsCharacter::RefreshRagdolling(const float DeltaTime)
 	// as the character's location, we don't do that because the camera depends on the
 	// capsule's bottom location, so its removal will cause the camera to behave erratically.
 
-	bool bGrounded;
-	SetActorLocation(RagdollTraceGround(bGrounded), false, nullptr, ETeleportType::TeleportPhysics);
+	SetActorLocation(RagdollTraceDownwardState(), false, nullptr, ETeleportType::TeleportPhysics);
 
 	// Zero target location means that it hasn't been replicated yet, so we can't apply the logic below.
 
@@ -979,7 +975,7 @@ void AAlsCharacter::RefreshRagdolling(const float DeltaTime)
 	}
 }
 
-FVector AAlsCharacter::RagdollTraceGround(bool& bGrounded)
+FVector AAlsCharacter::RagdollTraceDownwardState()
 {
 	auto RagdollLocation{!RagdollTargetLocation.IsZero() ? FVector{RagdollTargetLocation} : GetActorLocation()};
 
@@ -999,11 +995,25 @@ FVector AAlsCharacter::RagdollTraceGround(bool& bGrounded)
 	GetCharacterMovement()->InitCollisionParams(QueryParameters, CollisionResponses);
 
 	FHitResult Hit;
-	bGrounded = GetWorld()->SweepSingleByChannel(Hit, TraceStart, TraceEnd, FQuat::Identity,
+	const bool bGrounded = GetWorld()->SweepSingleByChannel(Hit, TraceStart, TraceEnd, FQuat::Identity,
 	                                             CollisionChannel, FCollisionShape::MakeSphere(CapsuleRadius),
 	                                             QueryParameters, CollisionResponses);
 
 	RagdollingState.bGrounded = bGrounded;
+
+	// Water overlap checking
+	TArray<FHitResult> WaterHit;
+	GetWorld()->SweepMultiByChannel(WaterHit, RagdollTargetLocation, RagdollTargetLocation, FQuat::Identity,
+												 ECC_WorldStatic, FCollisionShape::MakeSphere(CapsuleRadius));
+
+	RagdollingState.bInWater = false;
+	for (auto itr : WaterHit)
+	{
+		if (Cast<AWaterBody>(itr.Component->GetOwner()))
+		{
+			RagdollingState.bInWater = true;
+		}
+	}
 	
 	// #if ENABLE_DRAW_DEBUG
 	// 	UAlsDebugUtility::DrawSweepSingleSphere(GetWorld(), TraceStart, TraceEnd, CapsuleRadius,
@@ -1093,7 +1103,7 @@ void AAlsCharacter::StopRagdollingImplementation()
 	auto Capsule = GetCapsuleComponent();
 	FVector CapsuleBottom = Capsule->GetComponentLocation() + FVector(0,0,-Capsule->GetScaledCapsuleHalfHeight());
 	FHitResult RagdollHitCheck;
-	const FVector TraceEnd = CapsuleBottom + FVector(0,0,GetDefaultHalfHeight() * 2);
+	const FVector TraceEnd = CapsuleBottom + FVector(0,0,-Capsule->GetScaledCapsuleHalfHeight()) * 2;
 	GetWorld()->LineTraceSingleByChannel(RagdollHitCheck, CapsuleBottom, TraceEnd,
 		GetCapsuleComponent()->GetCollisionObjectType(),
 		{FName(), true, this});
@@ -1135,8 +1145,7 @@ void AAlsCharacter::StopRagdollingImplementation()
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 	GetCharacterMovement()->bIgnoreClientMovementErrorChecksAndCorrection = false;
 
-	bool bGrounded;
-	const auto NewActorLocation{RagdollTraceGround(bGrounded)};
+	const auto NewActorLocation{RagdollTraceDownwardState()};
 
 	// Determine whether the ragdoll is facing upward or downward and set the actor rotation accordingly.
 
@@ -1186,9 +1195,13 @@ void AAlsCharacter::StopRagdollingImplementation()
 
 	AlsCharacterMovement->SetMovementModeLocked(false);
 
-	if (bGrounded)
+	if (RagdollingState.bGrounded)
 	{
 		GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	}
+	else if (RagdollingState.bInWater)
+	{
+		GetCharacterMovement()->SetMovementMode(MOVE_Swimming);
 	}
 	else
 	{
@@ -1200,7 +1213,7 @@ void AAlsCharacter::StopRagdollingImplementation()
 
 	OnRagdollingEnded();
 
-	if (bGrounded && GetMesh()->GetAnimInstance()->Montage_Play(SelectGetUpMontage(bRagdollFacingUpward)) > 0.0f)
+	if (RagdollingState.bGrounded && GetMesh()->GetAnimInstance()->Montage_Play(SelectGetUpMontage(bRagdollFacingUpward)) > 0.0f)
 	{
 		AlsCharacterMovement->SetInputBlocked(true);
 

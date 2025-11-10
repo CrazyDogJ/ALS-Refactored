@@ -141,3 +141,8 @@ void UAlsAnimationInstance_Extend::TurnInPlaceImmediately()
 {
 	bNeedToTurnInPlace = true;
 }
+
+void UAlsAnimationInstance_Extend::RefreshSwimmingVelocityBlend()
+{
+	RefreshVelocityBlend();
+}

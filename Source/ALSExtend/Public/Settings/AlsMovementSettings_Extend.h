@@ -123,8 +123,8 @@ struct ALSEXTEND_API FAlsClimbingSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float ClimbUpLedgeEyeHeight = 20.0f;
 
-	UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0", ClampMax = "80.0"), BlueprintReadOnly)
-	float ClimbingCollisionShrinkAmount = 30.0f;
+	//UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0", ClampMax = "80.0"), BlueprintReadOnly)
+	//float ClimbingCollisionShrinkAmount = 30.0f;
 
 	UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0"), BlueprintReadOnly)
 	float SlopeSpeedMultiplier = 80.0f;
@@ -167,12 +167,6 @@ struct ALSEXTEND_API FAlsSwimmingSettings
 	 */
 	UPROPERTY(EditDefaultsOnly)
 	float BeginSwimDepth = 75.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float SwimCapsuleRadius = 30.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float SwimCapsuleHalfHeight = 90.0f;
 
 	UPROPERTY(EditDefaultsOnly)
 	float SwimToSurfaceBuoyancyAdditive = 20.0f;

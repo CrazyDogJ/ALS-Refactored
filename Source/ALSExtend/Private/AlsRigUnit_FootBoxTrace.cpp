@@ -6,6 +6,7 @@
 #include "Engine/HitResult.h"
 #include "Engine/World.h"
 #include "PhysicsEngine/PhysicsAsset.h"
+#include "PhysicsEngine/SkeletalBodySetup.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(AlsRigUnit_FootBoxTrace)
 

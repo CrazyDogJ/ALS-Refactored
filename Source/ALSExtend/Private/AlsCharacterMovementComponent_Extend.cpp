@@ -4,7 +4,7 @@
 #include "AlsCharacterMovementComponent_Extend.h"
 
 #include "AlsCharacter_Extend.h"
-#include "CustomMovementMode.h"
+#include "Utility/CustomMovementMode.h"
 #include "WaterBodyActor.h"
 #include "WaterSplineComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -12,6 +12,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
 #include "Utility/AlsDebugUtility.h"
+#include "Utility/AlsGameplayTags_Extend.h"
 
 DECLARE_CYCLE_STAT(TEXT("Char FindFloor"), STAT_CharFindFloor, STATGROUP_Character);
 
@@ -74,7 +75,16 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 
 	FVector Adjusted = Velocity * deltaTime;
 
-	if (bIsSwimOnSurface && UpdatedComponent->GetComponentLocation().Z >= GetWaterSurface().Z - 5.0f && Acceleration.Z >= 0)
+	// Swimming store current touched floor. used to decide should we walk or fall.
+	FFindFloorResult HasFloorResult;
+	FindFloor(UpdatedComponent->GetComponentLocation(), HasFloorResult, false);
+	CurrentFloor = HasFloorResult;
+
+	// Keep surface height
+	if (bIsSwimOnSurface &&
+		UpdatedComponent->GetComponentLocation().Z >= GetWaterSurface().Z - 5.0f &&
+		Acceleration.Z >= 0 &&
+		!HasFloorResult.IsWalkableFloor())
 	{
 		//Avoid jump in water immediately stop.
 		if (Adjusted.Z > GetWaterSurface().Z - 5.0f - UpdatedComponent->GetComponentLocation().Z)
@@ -82,7 +92,8 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 			Adjusted.Z = GetWaterSurface().Z - 5.0f - UpdatedComponent->GetComponentLocation().Z;
 		}
 	}
-	
+
+	// Swim main
 	FHitResult Hit(1.f);
 	float remainingTime = deltaTime * Swim(Adjusted, Hit);
 	
@@ -93,6 +104,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 		return;
 	}
 
+	// Swim adjust
 	if (Hit.Time < 1.f && CharacterOwner)
 	{
 		HandleSwimmingWallHit(Hit, deltaTime);
@@ -140,7 +152,8 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 			SlideAlongSurface(Adjusted, (1.f - Hit.Time), Hit.Normal, Hit, true);
 		}
 	}
-	
+
+	// Jump out of water I
 	if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && !bJustTeleported && ((deltaTime - remainingTime) > UE_KINDA_SMALL_NUMBER) && CharacterOwner)
 	{
 		bool bWaterJump = !IsInWater();
@@ -151,7 +164,8 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 			Velocity.Z = velZ;
 		}
 	}
-	
+
+	// Jump out of water II
 	if (bWantsToJumpOutOfWater && UpdatedComponent->GetComponentLocation().Z <= GetWaterSurface().Z && bIsSwimOnSurface)
 	{
 		if (GetMovementSettingsExtendSafe()->SwimmingSettings.bCanJumpOutOfWater)
@@ -164,10 +178,21 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 		}
 		bWantsToJumpOutOfWater = false;
 	}
+
+	//river velocity
+	const FVector Delta = GetWaterInfoForSwim().WaterVelocity * GetMovementSettingsExtendSafe()->SwimmingSettings.WaterVelocityForceMultiplier * deltaTime;
+	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
 	
+	// Mantle and step on land
+	if (Acceleration.Length() > 1.0f && Cast<AAlsCharacter_Extend>(CharacterOwner)->StartMantlingSwimming())
+	{
+		return;
+	}
+	
+	// Out water using Walking Movement Mode.
 	if (!IsInWater() && IsSwimming())
 	{
-		SetMovementMode(MOVE_Falling);
+		ExitSwimming();
 	}
 
 	//may have left water - if so, script might have set new physics mode
@@ -175,15 +200,6 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 	{
 		StartNewPhysics(remainingTime, Iterations);
 	}
-
-	if (Acceleration.Length() > 1.0f && Cast<AAlsCharacter_Extend>(CharacterOwner)->StartMantlingSwimming())
-	{
-		return;
-	}
-	
-	//river velocity
-	const FVector Delta = GetWaterInfoForSwim().WaterVelocity * GetMovementSettingsExtendSafe()->SwimmingSettings.WaterVelocityForceMultiplier * deltaTime;
-	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
 }
 
 void UAlsCharacterMovementComponent_Extend::StartSwimming(FVector OldLocation, FVector OldVelocity, float timeTick,
@@ -274,106 +290,72 @@ FVector UAlsCharacterMovementComponent_Extend::GetWaterSurface() const
 	return GetMovementSettingsExtendSafe()->SwimmingSettings.bIncludeWave ? GetWaterInfoForSwim().WaterSurfacePosition : GetWaterInfoForSwim().WaterPlaneLocation;
 }
 
-float GetWaterSplineKeyFast(FVector Location, const UWaterBodyComponent* WaterBodyComponent, TMap<const UWaterBodyComponent*, float>& OutSegmentMap)/*const*/
+UWaterBodyComponent* UAlsCharacterMovementComponent_Extend::GetCurrentWaterBodyComponent() const
 {
-	if (!OutSegmentMap.Contains(WaterBodyComponent))
-	{
-		OutSegmentMap.Add(WaterBodyComponent, -1);
-	}
-
-	const UWaterSplineComponent* WaterSpline = WaterBodyComponent->GetWaterSpline();
-	const FVector LocalLocation = WaterBodyComponent->GetComponentTransform().InverseTransformPosition(Location);
-	const FInterpCurveVector& InterpCurve = WaterSpline->GetSplinePointsPosition();
-	float& Segment = OutSegmentMap[WaterBodyComponent];
-
-	if (Segment == -1)
-	{
-		float DummyDistance;
-		return InterpCurve.FindNearest(LocalLocation, DummyDistance, Segment);
-	}
-
-	//We have the cached segment, so search for the best point as in FInterpCurve<T>::FindNearest
-	//but only in the current segment and the two immediate neighbors
-
-	//River splines aren't looped, so we don't have to handle that case
-	const int32 NumPoints = InterpCurve.Points.Num();
-	const int32 LastSegmentIdx = FMath::Max(0, NumPoints - 2);
-	if (NumPoints > 1)
-	{
-		float BestDistanceSq = BIG_NUMBER;
-		float BestResult = BIG_NUMBER;
-		float BestSegment = Segment;
-		for (int32 i = Segment - 1; i <= Segment + 1; ++i)
-		{
-			const int32 SegmentIdx = FMath::Clamp(i, 0, LastSegmentIdx);
-			float LocalDistanceSq;
-			float LocalResult = InterpCurve.FindNearestOnSegment(LocalLocation, SegmentIdx, LocalDistanceSq);
-			if (LocalDistanceSq < BestDistanceSq)
-			{
-				BestDistanceSq = LocalDistanceSq;
-				BestResult = LocalResult;
-				BestSegment = SegmentIdx;
-			}
-		}
-
-		if (FMath::IsNearlyEqual(BestResult, Segment - 1) || FMath::IsNearlyEqual(BestResult, Segment + 1))
-		{
-			//We're at either end of the search - it's possible we skipped a segment so just do a full lookup in this case
-			float DummyDistance;
-			return InterpCurve.FindNearest(LocalLocation, DummyDistance, Segment);
-		}
-
-		Segment = BestSegment;
-		return BestResult;
-	}
-
-	if (NumPoints == 1)
-	{
-		Segment = 0;
-		return InterpCurve.Points[0].InVal;
-	}
-
-	return 0.0f;
-}
-
-void UAlsCharacterMovementComponent_Extend::GetWaterSplineKey(FVector Location, TMap<const UWaterBodyComponent*, float>& OutMap, TMap<const UWaterBodyComponent*, float>& OutSegmentMap) const
-{
-	OutMap.Reset();
-	for (const UWaterBodyComponent* WaterBodyComponent : GetWaterBodyComponents())
-	{
-		if (WaterBodyComponent && WaterBodyComponent->GetWaterBodyType() == EWaterBodyType::River)
-		{
-			float SplineInputKey;
-			SplineInputKey = GetWaterSplineKeyFast(Location, WaterBodyComponent, OutSegmentMap);
-			OutMap.Add(WaterBodyComponent, SplineInputKey);
-		}
-	}
-}
-
-TArray<UWaterBodyComponent*> UAlsCharacterMovementComponent_Extend::GetWaterBodyComponents() const
-{
-	TArray<UWaterBodyComponent*> FinalComps;
-	
 	if (!CharacterOwner)
 	{
-		return FinalComps;
+		return nullptr;
 	}
 	if (!CharacterOwner->GetCapsuleComponent())
 	{
-		return FinalComps;
+		return nullptr;
 	}
 	
 	TArray<AActor*> OverlappedActors;
 	CharacterOwner->GetCapsuleComponent()->GetOverlappingActors(OverlappedActors);
-	for (auto Actor : OverlappedActors)
+
+	TArray<UWaterBodyComponent*> OverlappedWaterBodyComponents;
+	for (const auto Actor : OverlappedActors)
 	{
-		if (auto WaterBody = Cast<AWaterBody>(Actor))
+		if (const auto WaterBodyActor = Cast<AWaterBody>(Actor))
 		{
-			FinalComps.Add(WaterBody->GetWaterBodyComponent());
+			OverlappedWaterBodyComponents.Add(WaterBodyActor->GetWaterBodyComponent());
 		}
 	}
 
-	return FinalComps;
+	OverlappedWaterBodyComponents.Sort([](const UWaterBodyComponent& ABody, const UWaterBodyComponent& BBody)
+	{
+		// Using PP calculation ---------------------------------------------------------------------------------------
+		// If both water bodies either have waves or both don't have waves, use the overlap priority to determine which to use, since in this case we need to respect the surface waves
+		if (ABody.HasWaves() == BBody.HasWaves())
+		{
+			const int32 APriority = ABody.GetOverlapMaterialPriority();
+			const int32 BPriority = BBody.GetOverlapMaterialPriority();
+			return APriority > BPriority;
+		}
+
+		// Otherwise, prefer the water body with waves to ensure the PP calculates the waves correctly.
+		return ABody.HasWaves() && !BBody.HasWaves();
+	});
+
+	if (OverlappedWaterBodyComponents.Num() > 0)
+	{
+		return OverlappedWaterBodyComponents[0];
+	}
+	
+	return nullptr;
+}
+
+void UAlsCharacterMovementComponent_Extend::EnterSwimming()
+{
+	SetMovementMode(MOVE_Swimming);
+
+	// Set capsule size
+	/** TODO : Capsule Size */
+	
+	//reset wants to jump out of water after entering swimming
+	bWantsToJumpOutOfWater = false;
+}
+
+void UAlsCharacterMovementComponent_Extend::ExitSwimming()
+{
+	if (CurrentFloor.IsWalkableFloor())
+	{
+		SetMovementMode(MOVE_Walking);
+		return;
+	}
+
+	SetMovementMode(MOVE_Falling);
 }
 
 FWaterInfoForSwim UAlsCharacterMovementComponent_Extend::GetWaterInfoForSwim() const
@@ -385,43 +367,61 @@ FWaterInfoForSwim UAlsCharacterMovementComponent_Extend::GetWaterInfoForSwim() c
 	FVector OutWaterVelocity = FVector::ZeroVector;
 	int32 OutWaterBodyIdx = -1;
 	float OutWaterHeight = 0;
-
-	TMap<const UWaterBodyComponent*, float> SplineKeyMap;
-	TMap<const UWaterBodyComponent*, float> OutSegmentMap;
-	GetWaterSplineKey(UpdatedComponent->GetComponentLocation(), SplineKeyMap, OutSegmentMap);
+	auto CurrentWaterBody = GetCurrentWaterBodyComponent();
 	
-	if (CharacterOwner)
+	if (CharacterOwner && CurrentWaterBody)
 	{
-		for (UWaterBodyComponent* CurrentWaterBodyComponent : GetWaterBodyComponents())
+		EWaterBodyQueryFlags QueryFlags =
+			EWaterBodyQueryFlags::ComputeLocation
+			| EWaterBodyQueryFlags::ComputeNormal
+			| EWaterBodyQueryFlags::ComputeImmersionDepth
+			| EWaterBodyQueryFlags::ComputeVelocity
+			| EWaterBodyQueryFlags::IncludeWaves;
+
+		FWaterBodyQueryResult QueryResult = CurrentWaterBody->QueryWaterInfoClosestToWorldLocation(UpdatedComponent->GetComponentLocation(), QueryFlags);
+		check(!QueryResult.IsInExclusionVolume());
+		OutWaterHeight = UpdatedComponent->GetComponentLocation().Z + QueryResult.GetImmersionDepth();
+		if (EnumHasAnyFlags(QueryResult.GetQueryFlags(), EWaterBodyQueryFlags::ComputeDepth))
 		{
-			if (CurrentWaterBodyComponent)
-			{
-				const float SplineInputKey = SplineKeyMap.FindRef(CurrentWaterBodyComponent);
-
-				EWaterBodyQueryFlags QueryFlags =
-					EWaterBodyQueryFlags::ComputeLocation
-					| EWaterBodyQueryFlags::ComputeNormal
-					| EWaterBodyQueryFlags::ComputeImmersionDepth
-					| EWaterBodyQueryFlags::ComputeVelocity
-					| EWaterBodyQueryFlags::IncludeWaves;
-
-				FWaterBodyQueryResult QueryResult = CurrentWaterBodyComponent->QueryWaterInfoClosestToWorldLocation(UpdatedComponent->GetComponentLocation(), QueryFlags, SplineInputKey);
-				check(!QueryResult.IsInExclusionVolume());
-				OutWaterHeight = UpdatedComponent->GetComponentLocation().Z + QueryResult.GetImmersionDepth();
-				if (EnumHasAnyFlags(QueryResult.GetQueryFlags(), EWaterBodyQueryFlags::ComputeDepth))
-				{
-					OutWaterDepth = QueryResult.GetWaterSurfaceDepth();
-				}
-				OutWaterPlaneLocation = QueryResult.GetWaterPlaneLocation();
-				OutWaterPlaneNormal = QueryResult.GetWaterPlaneNormal();
-				OutWaterSurfacePosition = QueryResult.GetWaterSurfaceLocation();
-				OutWaterVelocity = QueryResult.GetVelocity();
-				OutWaterBodyIdx = CurrentWaterBodyComponent ? CurrentWaterBodyComponent->GetWaterBodyIndex() : 0;
-			}
+			OutWaterDepth = QueryResult.GetWaterSurfaceDepth();
 		}
+		OutWaterPlaneLocation = QueryResult.GetWaterPlaneLocation();
+		OutWaterPlaneNormal = QueryResult.GetWaterPlaneNormal();
+		OutWaterSurfacePosition = QueryResult.GetWaterSurfaceLocation();
+		OutWaterVelocity = QueryResult.GetVelocity();
+		OutWaterBodyIdx = CurrentWaterBody->GetWaterBodyIndex();
 	}
 
 	return FWaterInfoForSwim(OutWaterDepth, OutWaterPlaneLocation, OutWaterPlaneNormal, OutWaterSurfacePosition, OutWaterVelocity, OutWaterBodyIdx, OutWaterHeight);
+}
+
+void UAlsCharacterMovementComponent_Extend::GetDefaultUnscaledCapsule(float& OutCapsuleHalfHeight,
+	float& OutCapsuleRadius) const
+{
+	Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetDefaultCapsule(OutCapsuleHalfHeight, OutCapsuleRadius);
+}
+
+void UAlsCharacterMovementComponent_Extend::GetDefaultScaledCapsule(float& OutCapsuleHalfHeight,
+	float& OutCapsuleRadius) const
+{
+	float UnscaledCapsuleHalfHeight;
+	float UnscaledCapsuleRadius;
+	GetDefaultUnscaledCapsule(UnscaledCapsuleHalfHeight, UnscaledCapsuleRadius);
+	OutCapsuleRadius = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetScaledRadius(UnscaledCapsuleRadius);
+	OutCapsuleHalfHeight = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetScaledHaleHeight(UnscaledCapsuleHalfHeight);
+}
+
+void UAlsCharacterMovementComponent_Extend::GetUnscaledCrouchHalfHeight(float& OutCapsuleHalfHeight) const
+{
+	OutCapsuleHalfHeight = GetCrouchedHalfHeight();
+	bool bValid;
+	const auto FoundSettings = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->
+		RuntimeCapsuleSizeSettings->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
+
+	if (bValid)
+	{
+		OutCapsuleHalfHeight = FoundSettings.CapsuleHalfHeight;
+	}
 }
 
 UAlsCharacterMovementComponent_Extend::UAlsCharacterMovementComponent_Extend()
@@ -433,11 +433,7 @@ UAlsCharacterMovementComponent_Extend::UAlsCharacterMovementComponent_Extend()
 	CurrentClimbDashTime = 0,
 	SwingActor = nullptr;
 
-	// Set default half height
-	DefaultStandHalfHeight = 75.0f;
-	DefaultStandRadius = 30.0f;
-
-	SetIsReplicated(true);
+	SetIsReplicatedByDefault(true);
 }
 
 void UAlsCharacterMovementComponent_Extend::Crouch(bool bClientSimulation)
@@ -452,8 +448,12 @@ void UAlsCharacterMovementComponent_Extend::Crouch(bool bClientSimulation)
 		return;
 	}
 
+	// Get Crouch half height.
+	float UnscaledCrouchedHalfHeight;
+	GetUnscaledCrouchHalfHeight(UnscaledCrouchedHalfHeight);
+	
 	// See if collision is already at desired size.
-	if (CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == GetCrouchedHalfHeight())
+	if (CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == UnscaledCrouchedHalfHeight)
 	{
 		if (!bClientSimulation)
 		{
@@ -463,6 +463,10 @@ void UAlsCharacterMovementComponent_Extend::Crouch(bool bClientSimulation)
 		return;
 	}
 
+	float DefaultStandRadius;
+	float DefaultStandHalfHeight;
+	GetDefaultUnscaledCapsule(DefaultStandHalfHeight, DefaultStandRadius);
+	
 	if (bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
 	{
 		// restore collision size before crouching
@@ -475,7 +479,7 @@ void UAlsCharacterMovementComponent_Extend::Crouch(bool bClientSimulation)
 	const float OldUnscaledHalfHeight = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 	const float OldUnscaledRadius = CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius();
 	// Height is not allowed to be smaller than radius.
-	const float ClampedCrouchedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, GetCrouchedHalfHeight());
+	const float ClampedCrouchedHalfHeight = FMath::Max3(0.f, OldUnscaledRadius, UnscaledCrouchedHalfHeight);
 	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(OldUnscaledRadius, ClampedCrouchedHalfHeight);
 	float HalfHeightAdjust = (OldUnscaledHalfHeight - ClampedCrouchedHalfHeight);
 	float ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
@@ -511,23 +515,11 @@ void UAlsCharacterMovementComponent_Extend::Crouch(bool bClientSimulation)
 	bForceNextFloorCheck = true;
 
 	// OnStartCrouch takes the change from the Default size, not the current one (though they are usually the same).
-	const float MeshAdjust = ScaledHalfHeightAdjust;
 	HalfHeightAdjust = (DefaultStandHalfHeight - ClampedCrouchedHalfHeight);
 	ScaledHalfHeightAdjust = HalfHeightAdjust * ComponentScale;
 
 	AdjustProxyCapsuleSize();
 	CharacterOwner->OnStartCrouch( HalfHeightAdjust, ScaledHalfHeightAdjust );
-
-	// Don't smooth this change in mesh position
-	if ((bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy) || (IsNetMode(NM_ListenServer) && CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy))
-	{
-		FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character();
-		if (ClientData)
-		{
-			ClientData->MeshTranslationOffset -= FVector(0.f, 0.f, MeshAdjust);
-			ClientData->OriginalMeshTranslationOffset = ClientData->MeshTranslationOffset;
-		}
-	}
 }
 
 void UAlsCharacterMovementComponent_Extend::UnCrouch(bool bClientSimulation)
@@ -536,7 +528,11 @@ void UAlsCharacterMovementComponent_Extend::UnCrouch(bool bClientSimulation)
 	{
 		return;
 	}
-
+	
+	float DefaultStandRadius;
+	float DefaultStandHalfHeight;
+	GetDefaultUnscaledCapsule(DefaultStandHalfHeight, DefaultStandRadius);
+	
 	// See if collision is already at desired size.
 	if( CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight() == DefaultStandHalfHeight )
 	{
@@ -655,21 +651,9 @@ void UAlsCharacterMovementComponent_Extend::UnCrouch(bool bClientSimulation)
 
 	// Now call SetCapsuleSize() to cause touch/untouch events and actually grow the capsule
 	CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultStandRadius, DefaultStandHalfHeight, true);
-
-	const float MeshAdjust = ScaledHalfHeightAdjust;
+	
 	AdjustProxyCapsuleSize();
 	CharacterOwner->OnEndCrouch( HalfHeightAdjust, ScaledHalfHeightAdjust );
-
-	// Don't smooth this change in mesh position
-	if ((bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy) || (IsNetMode(NM_ListenServer) && CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy))
-	{
-		FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character();
-		if (ClientData)
-		{
-			ClientData->MeshTranslationOffset += FVector(0.f, 0.f, MeshAdjust);
-			ClientData->OriginalMeshTranslationOffset = ClientData->MeshTranslationOffset;
-		}
-	}
 }
 
 void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 Iterations)
@@ -825,7 +809,6 @@ bool UAlsCharacterMovementComponent_Extend::HasReachedEdge() const
 void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 Iterations, bool bShouldMantle, bool bShouldClimbDownFloor)
 {
 	bWantsToClimb = false;
-	//bShouldMantleOnEndClimb = bShouldMantle;
 	
 	if (bShouldClimbDownFloor)
 	{
@@ -874,6 +857,7 @@ bool UAlsCharacterMovementComponent_Extend::ClimbDownToFloor() const
 	if (Velocity.Z < 0 && Acceleration.Z < 0)
 	{
 		FFindFloorResult FloorResult;
+		// TODO : Fix climbing down floor teleport visual bug.
 		const FVector FindFloorLocation = UpdatedComponent->GetComponentLocation();
 
 		// First simple check
@@ -881,13 +865,17 @@ bool UAlsCharacterMovementComponent_Extend::ClimbDownToFloor() const
 		if (IsValidLandingSpot(FindFloorLocation, FloorResult.HitResult) && FloorResult.IsWalkableFloor())
 		{
 			// Enough space check
+			float ScaledStandRadius;
+			float ScaledStandHalfHeight;
+			GetDefaultScaledCapsule(ScaledStandHalfHeight, ScaledStandRadius);
+			
 			FHitResult EnoughSpaceCheckHitResult;
-			FVector End = FindFloorLocation - FVector(0,0,DefaultStandHalfHeight);
+			FVector End = FindFloorLocation - FVector(0,0,ScaledStandHalfHeight);
 			FCollisionQueryParams Params;
 			Params.AddIgnoredActor(GetCharacterOwner());
 			GetWorld()->SweepSingleByChannel(EnoughSpaceCheckHitResult, FindFloorLocation,
 			                                 End, FQuat::Identity, ECC_Visibility,
-			                                 FCollisionShape::MakeSphere(DefaultStandRadius), Params);
+			                                 FCollisionShape::MakeSphere(ScaledStandRadius), Params);
 
 			if (IsWalkable(EnoughSpaceCheckHitResult))
 			{
@@ -898,273 +886,6 @@ bool UAlsCharacterMovementComponent_Extend::ClimbDownToFloor() const
 	
 	return false;
 }
-
-/*void UAlsCharacterMovementComponent_Extend::FindFloor_Custom(const FVector& CapsuleLocation,
-	FFindFloorResult& OutFloorResult, bool bCanUseCachedLocation, const FHitResult* DownwardSweepResult) const
-{
-	SCOPE_CYCLE_COUNTER(STAT_CharFindFloor);
-
-	// No collision, no floor...
-	if (!HasValidData() || !UpdatedComponent->IsQueryCollisionEnabled())
-	{
-		OutFloorResult.Clear();
-		return;
-	}
-
-	//UE_LOG(LogCharacterMovement, VeryVerbose, TEXT("[Role:%d] FindFloor: %s at location %s"), (int32)CharacterOwner->GetLocalRole(), *GetNameSafe(CharacterOwner), *CapsuleLocation.ToString());
-	check(CharacterOwner->GetCapsuleComponent());
-
-	// Increase height check slightly if walking, to prevent floor height adjustment from later invalidating the floor result.
-	const float HeightCheckAdjust = (IsMovingOnGround() ? MAX_FLOOR_DIST + UE_KINDA_SMALL_NUMBER : -MAX_FLOOR_DIST);
-
-	float FloorSweepTraceDist = FMath::Max(MAX_FLOOR_DIST, MaxStepHeight + HeightCheckAdjust);
-	float FloorLineTraceDist = FloorSweepTraceDist;
-	bool bNeedToValidateFloor = true;
-	
-	// Sweep floor
-	if (FloorLineTraceDist > 0.f || FloorSweepTraceDist > 0.f)
-	{
-		UCharacterMovementComponent* MutableThis = const_cast<UAlsCharacterMovementComponent_Extend*>(this);
-
-		if ( bAlwaysCheckFloor || !bCanUseCachedLocation || bForceNextFloorCheck || bJustTeleported )
-		{
-			MutableThis->bForceNextFloorCheck = false;
-			ComputeFloorDist_Custom(CapsuleLocation, FloorLineTraceDist, FloorSweepTraceDist, OutFloorResult, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius(), DownwardSweepResult);
-		}
-		else
-		{
-			// Force floor check if base has collision disabled or if it does not block us.
-			UPrimitiveComponent* MovementBase = CharacterOwner->GetMovementBase();
-			const AActor* BaseActor = MovementBase ? MovementBase->GetOwner() : NULL;
-			const ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
-
-			if (MovementBase != NULL)
-			{
-				MutableThis->bForceNextFloorCheck = !MovementBase->IsQueryCollisionEnabled()
-				|| MovementBase->GetCollisionResponseToChannel(CollisionChannel) != ECR_Block
-				|| MovementBaseUtility::IsDynamicBase(MovementBase);
-			}
-
-			const bool IsActorBasePendingKill = BaseActor && !IsValid(BaseActor);
-
-			if ( !bForceNextFloorCheck && !IsActorBasePendingKill && MovementBase )
-			{
-				//UE_LOG(LogCharacterMovement, Log, TEXT("%s SKIP check for floor"), *CharacterOwner->GetName());
-				OutFloorResult = CurrentFloor;
-				bNeedToValidateFloor = false;
-			}
-			else
-			{
-				MutableThis->bForceNextFloorCheck = false;
-				ComputeFloorDist_Custom(CapsuleLocation, FloorLineTraceDist, FloorSweepTraceDist, OutFloorResult, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius(), DownwardSweepResult);
-			}
-		}
-	}
-
-	// OutFloorResult.HitResult is now the result of the vertical floor check.
-	// See if we should try to "perch" at this location.
-	if (bNeedToValidateFloor && OutFloorResult.bBlockingHit && !OutFloorResult.bLineTrace)
-	{
-		const bool bCheckRadius = true;
-		if (ShouldComputePerchResult(OutFloorResult.HitResult, bCheckRadius))
-		{
-			float MaxPerchFloorDist = FMath::Max(MAX_FLOOR_DIST, MaxStepHeight + HeightCheckAdjust);
-			if (IsMovingOnGround())
-			{
-				MaxPerchFloorDist += FMath::Max(0.f, PerchAdditionalHeight);
-			}
-
-			FFindFloorResult PerchFloorResult;
-			if (ComputePerchResult(GetValidPerchRadius(), OutFloorResult.HitResult, MaxPerchFloorDist, PerchFloorResult))
-			{
-				// Don't allow the floor distance adjustment to push us up too high, or we will move beyond the perch distance and fall next time.
-				const float AvgFloorDist = (MIN_FLOOR_DIST + MAX_FLOOR_DIST) * 0.5f;
-				const float MoveUpDist = (AvgFloorDist - OutFloorResult.FloorDist);
-				if (MoveUpDist + PerchFloorResult.FloorDist >= MaxPerchFloorDist)
-				{
-					OutFloorResult.FloorDist = AvgFloorDist;
-				}
-
-				// If the regular capsule is on an unwalkable surface but the perched one would allow us to stand, override the normal to be one that is walkable.
-				if (!OutFloorResult.bWalkableFloor)
-				{
-					// Floor distances are used as the distance of the regular capsule to the point of collision, to make sure AdjustFloorHeight() behaves correctly.
-					OutFloorResult.SetFromLineTrace(PerchFloorResult.HitResult, OutFloorResult.FloorDist, FMath::Max(OutFloorResult.FloorDist, MIN_FLOOR_DIST), true);
-				}
-			}
-			else
-			{
-				// We had no floor (or an invalid one because it was unwalkable), and couldn't perch here, so invalidate floor (which will cause us to start falling).
-				OutFloorResult.bWalkableFloor = false;
-			}
-		}
-	}
-}*/
-
-/*void UAlsCharacterMovementComponent_Extend::ComputeFloorDist_Custom(const FVector& CapsuleLocation, float LineDistance,
-                                                                    float SweepDistance, FFindFloorResult& OutFloorResult, float SweepRadius,
-                                                                    const FHitResult* DownwardSweepResult) const
-{
-	// TODO Copied with modifications from UCharacterMovementComponent::ComputeFloorDist().
-	// TODO After the release of a new engine version, this code should be updated to match the source code.
-
-	// ReSharper disable All
-
-	// UE_LOG(LogCharacterMovement, VeryVerbose, TEXT("[Role:%d] ComputeFloorDist: %s at location %s"), (int32)CharacterOwner->GetLocalRole(), *GetNameSafe(CharacterOwner), *CapsuleLocation.ToString());
-	OutFloorResult.Clear();
-
-	float PawnRadius, PawnHalfHeight;
-	CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleSize(PawnRadius, PawnHalfHeight);
-
-	bool bSkipSweep = false;
-	if (DownwardSweepResult != NULL && DownwardSweepResult->IsValidBlockingHit())
-	{
-		// Only if the supplied sweep was vertical and downward.
-		const bool bIsDownward = GetGravitySpaceZ(DownwardSweepResult->TraceStart - DownwardSweepResult->TraceEnd) > 0;
-		const bool bIsVertical = ProjectToGravityFloor(DownwardSweepResult->TraceStart - DownwardSweepResult->TraceEnd).SizeSquared() <= UE_KINDA_SMALL_NUMBER;
-		if (bIsDownward && bIsVertical)
-		{
-			// Reject hits that are barely on the cusp of the radius of the capsule
-			if (IsWithinEdgeTolerance(DownwardSweepResult->Location, DownwardSweepResult->ImpactPoint, PawnRadius))
-			{
-				// Don't try a redundant sweep, regardless of whether this sweep is usable.
-				bSkipSweep = true;
-
-				const bool bIsWalkable = IsWalkable(*DownwardSweepResult);
-				const float FloorDist = UE_REAL_TO_FLOAT(GetGravitySpaceZ(CapsuleLocation - DownwardSweepResult->Location));
-				OutFloorResult.SetFromSweep(*DownwardSweepResult, FloorDist, bIsWalkable);
-
-				if (bIsWalkable)
-				{
-					// Use the supplied downward sweep as the floor hit result.
-					return;
-				}
-			}
-		}
-	}
-
-	// We require the sweep distance to be >= the line distance, otherwise the HitResult can't be interpreted as the sweep result.
-	if (SweepDistance < LineDistance)
-	{
-		ensure(SweepDistance >= LineDistance);
-		return;
-	}
-
-	bool bBlockingHit = false;
-
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ComputeFloorDist), false, CharacterOwner);
-	// Having a character base on a component within a cluster union will cause replication problems.
-	// The issue is that ACharacter::SetBase() gets a GeometryCollectionComponent passed to it when standing on the DynamicPlatform
-	// and that GC is never simulating, and since it's not simulating it's stopping the based movement flow there for simulated proxies.
-	QueryParams.bTraceIntoSubComponents = true;
-	QueryParams.bReplaceHitWithSubComponents = false;
-
-	FCollisionResponseParams ResponseParam;
-	InitCollisionParams(QueryParams, ResponseParam);
-	const ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
-
-	// Sweep test
-	if (!bSkipSweep && SweepDistance > 0.f && SweepRadius > 0.f)
-	{
-		// Use a shorter height to avoid sweeps giving weird results if we start on a surface.
-		// This also allows us to adjust out of penetrations.
-		const float ShrinkScale = 0.9f;
-		const float ShrinkScaleOverlap = 0.1f;
-		float ShrinkHeight = (PawnHalfHeight - PawnRadius) * (1.f - ShrinkScale);
-		float TraceDist = SweepDistance + ShrinkHeight;
-		FCollisionShape CapsuleShape = FCollisionShape::MakeCapsule(SweepRadius, PawnHalfHeight - ShrinkHeight);
-
-		FHitResult Hit(1.f);
-		bBlockingHit = FloorSweepTest(Hit, CapsuleLocation, CapsuleLocation + TraceDist * GetGravityDirection(), CollisionChannel, CapsuleShape, QueryParams, ResponseParam);
-
-		// TODO Start of custom ALS code block.
-
-		const_cast<ThisClass*>(this)->SavePenetrationAdjustment(Hit);
-
-		// TODO End of custom ALS code block.
-
-		if (bBlockingHit)
-		{
-			// Reject hits adjacent to us, we only care about hits on the bottom portion of our capsule.
-			// Check 2D distance to impact point, reject if within a tolerance from radius.
-			if (Hit.bStartPenetrating || !IsWithinEdgeTolerance(CapsuleLocation, Hit.ImpactPoint, CapsuleShape.Capsule.Radius))
-			{
-				// Use a capsule with a slightly smaller radius and shorter height to avoid the adjacent object.
-				// Capsule must not be nearly zero or the trace will fall back to a line trace from the start point and have the wrong length.
-				CapsuleShape.Capsule.Radius = FMath::Max(0.f, CapsuleShape.Capsule.Radius - SWEEP_EDGE_REJECT_DISTANCE - UE_KINDA_SMALL_NUMBER);
-				if (!CapsuleShape.IsNearlyZero())
-				{
-					ShrinkHeight = (PawnHalfHeight - PawnRadius) * (1.f - ShrinkScaleOverlap);
-					TraceDist = SweepDistance + ShrinkHeight;
-					CapsuleShape.Capsule.HalfHeight = FMath::Max(PawnHalfHeight - ShrinkHeight, CapsuleShape.Capsule.Radius);
-					Hit.Reset(1.f, false);
-
-					bBlockingHit = FloorSweepTest(Hit, CapsuleLocation, CapsuleLocation + TraceDist * GetGravityDirection(), CollisionChannel, CapsuleShape, QueryParams, ResponseParam);
-				}
-			}
-
-			// Reduce hit distance by ShrinkHeight because we shrank the capsule for the trace.
-			// We allow negative distances here, because this allows us to pull out of penetrations.
-			const float MaxPenetrationAdjust = FMath::Max(MAX_FLOOR_DIST, PawnRadius);
-			const float SweepResult = FMath::Max(-MaxPenetrationAdjust, Hit.Time * TraceDist - ShrinkHeight);
-
-			OutFloorResult.SetFromSweep(Hit, SweepResult, false);
-			if (Hit.IsValidBlockingHit() && IsWalkable(Hit))
-			{
-				if (SweepResult <= SweepDistance)
-				{
-					// Hit within test distance.
-					OutFloorResult.bWalkableFloor = true;
-					return;
-				}
-			}
-		}
-	}
-
-	// Since we require a longer sweep than line trace, we don't want to run the line trace if the sweep missed everything.
-	// We do however want to try a line trace if the sweep was stuck in penetration.
-	if (!OutFloorResult.bBlockingHit && !OutFloorResult.HitResult.bStartPenetrating)
-	{
-		OutFloorResult.FloorDist = SweepDistance;
-		return;
-	}
-
-	// Line trace
-	if (LineDistance > 0.f)
-	{
-		const float ShrinkHeight = PawnHalfHeight;
-		const FVector LineTraceStart = CapsuleLocation;
-		const float TraceDist = LineDistance + ShrinkHeight;
-		const FVector Down = TraceDist * GetGravityDirection();
-		QueryParams.TraceTag = SCENE_QUERY_STAT_NAME_ONLY(FloorLineTrace);
-
-		FHitResult Hit(1.f);
-		bBlockingHit = GetWorld()->LineTraceSingleByChannel(Hit, LineTraceStart, LineTraceStart + Down, CollisionChannel, QueryParams, ResponseParam);
-
-		if (bBlockingHit)
-		{
-			if (Hit.Time > 0.f)
-			{
-				// Reduce hit distance by ShrinkHeight because we started the trace higher than the base.
-				// We allow negative distances here, because this allows us to pull out of penetrations.
-				const float MaxPenetrationAdjust = FMath::Max(MAX_FLOOR_DIST, PawnRadius);
-				const float LineResult = FMath::Max(-MaxPenetrationAdjust, Hit.Time * TraceDist - ShrinkHeight);
-
-				OutFloorResult.bBlockingHit = true;
-				if (LineResult <= LineDistance && IsWalkable(Hit))
-				{
-					OutFloorResult.SetFromLineTrace(Hit, OutFloorResult.FloorDist, LineResult, true);
-					return;
-				}
-			}
-		}
-	}
-
-	// No hits were acceptable.
-	OutFloorResult.bWalkableFloor = false;
-
-	// ReSharper restore All
-}*/
 
 void UAlsCharacterMovementComponent_Extend::UpdateClimbDashState(float deltaTime)
 {
@@ -1229,10 +950,9 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	}
 
 	//1.Const Variables;
-	const FVector& ComponentScale = UpdatedComponent->GetComponentTransform().GetScale3D();
-	const float DefaultHalfHeight = DefaultStandHalfHeight * UE_REAL_TO_FLOAT(ComponentScale.Z);
-	const float DefaultRadius = DefaultStandRadius * UE_REAL_TO_FLOAT(
-		ComponentScale.X < ComponentScale.Y ? ComponentScale.X : ComponentScale.Y);
+	float DefaultHalfHeight;
+	float DefaultRadius;
+	GetDefaultScaledCapsule(DefaultHalfHeight, DefaultRadius);
 	const FVector CompLoc = UpdatedComponent->GetComponentLocation();
 	const FVector CompBottomLoc = CompLoc - (FVector::UpVector * CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 	const FVector CompForward = UpdatedComponent->GetForwardVector();
@@ -1619,8 +1339,10 @@ float UAlsCharacterMovementComponent_Extend::GetImmerseDepth() const
 	{
 		return -1;
 	}
-	
-	const float DefaultHalfHeight = DefaultStandHalfHeight;
+
+	float DefaultHalfHeight;
+	float DefaultRadius;
+	GetDefaultScaledCapsule(DefaultHalfHeight, DefaultRadius);
 	const FVector WaterSurface = GetWaterSurface();
 	return (WaterSurface.Z - (UpdatedComponent->GetComponentLocation().Z - DefaultHalfHeight));
 }
@@ -1658,10 +1380,9 @@ void UAlsCharacterMovementComponent_Extend::SweepAndStoreWallHits(TArray<FHitRes
 {
 	Results.Empty();
 	
-	const FVector& ComponentScale = UpdatedComponent->GetComponentTransform().GetScale3D();
-	const float DefaultHalfHeight = DefaultStandHalfHeight * UE_REAL_TO_FLOAT(ComponentScale.Z);
-	const float DefaultRadius = DefaultStandRadius * UE_REAL_TO_FLOAT(
-		ComponentScale.X < ComponentScale.Y ? ComponentScale.X : ComponentScale.Y);
+	float DefaultHalfHeight;
+	float DefaultRadius;
+	GetDefaultScaledCapsule(DefaultHalfHeight, DefaultRadius);
 	const FCollisionShape CollisionShape = FCollisionShape::MakeSphere(DefaultRadius);
 
 	const FVector ClampedAccelerationDir = UKismetMathLibrary::GetDirectionUnitVector(
@@ -1800,18 +1521,19 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 	{
 		ExitSwing(false);
 	}
-	
-	if (MovementMode != MOVE_Swimming || !IsClimbing())
+
+	// Set back to default half height and radius
+	if (!IsSwimming() || !IsClimbing())
 	{
-		if (Stance != AlsStanceTags::Crouching)
-		{
-			GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleHalfHeight(
-				DefaultStandHalfHeight,
-				true);
-			GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleRadius(
-				DefaultStandRadius,
-				true);
-		}
+		float DefaultHalfHeight;
+		float DefaultRadius;
+		float UnscaledCrouchHalfHeight;
+		GetDefaultUnscaledCapsule(DefaultHalfHeight, DefaultRadius);
+		GetUnscaledCrouchHalfHeight(UnscaledCrouchHalfHeight);
+
+		const float FinalHalfHeight = Stance == AlsStanceTags::Crouching ? UnscaledCrouchHalfHeight : DefaultHalfHeight;
+		GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(DefaultRadius, FinalHalfHeight);
+		Cast<AAlsCharacter_Extend>(CharacterOwner)->UpdateMeshRelativeLocation(FinalHalfHeight, true);
 	}
 	
 	if (IsClimbing())
@@ -1820,7 +1542,14 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		{
 			bSwimToClimb = true;
 		}
-		GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleHalfHeight(DefaultStandHalfHeight - GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbingCollisionShrinkAmount);
+		bool bValid;
+		const auto Settings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::FreeClimbing, bValid);
+		if (bValid)
+		{
+			GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(Settings.CapsuleRadius, Settings.CapsuleHalfHeight);
+			Cast<AAlsCharacter_Extend>(CharacterOwner)->UpdateMeshRelativeLocation(Settings.CapsuleHalfHeight, true);
+		}
+		
 		bool Temp;
 		SweepAndStoreWallHits(CurrentWallHits, VelocityWallHit, Temp, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetForwardVector());
 	}
@@ -1831,20 +1560,6 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		
 		const FRotator StandRotation = FRotator(0, UpdatedComponent->GetComponentRotation().Yaw, 0);
 		UpdatedComponent->MoveComponent(FVector::Zero(), StandRotation, true);
-		
-		//if (bShouldMantleOnEndClimb)
-		//{
-		//	Cast<AAlsCharacter_Extend>(CharacterOwner)->StartMantlingFreeClimb();
-		//	bShouldMantleOnEndClimb = false;
-		//}
-	}
-	
-	if (MovementMode == MOVE_Swimming)
-	{
-		CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(GetMovementSettingsExtendSafe()->SwimmingSettings.SwimCapsuleRadius, GetMovementSettingsExtendSafe()->SwimmingSettings.SwimCapsuleHalfHeight);
-		
-		//reset wants to jump out of water after entering swimming
-		bWantsToJumpOutOfWater = false;
 	}
 	
 	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
@@ -1891,7 +1606,7 @@ float UAlsCharacterMovementComponent_Extend::GetMaxSpeed() const
 	if (IsSwimming())
 	{
 		float MaxSpeed = GetMovementSettingsExtendSafe()->SwimmingSettings.RunSpeed;
-		if (Cast<AAlsCharacter_Extend>(CharacterOwner)->GetDesiredGait() == AlsGaitTags::Sprinting)
+		if (MaxAllowedGait == AlsGaitTags::Sprinting)
 		{
 			MaxSpeed = GetMovementSettingsExtendSafe()->SwimmingSettings.SprintSpeed;
 		}
@@ -1918,7 +1633,7 @@ float UAlsCharacterMovementComponent_Extend::GetMaxSpeed() const
 	if (IsFlying())
 	{
 		float MaxSpeed = GetMovementSettingsExtendSafe()->FlyingSettings.MaxFlySpeed;
-		if (Cast<AAlsCharacter_Extend>(CharacterOwner)->GetDesiredGait() == AlsGaitTags::Sprinting)
+		if (MaxAllowedGait == AlsGaitTags::Sprinting)
 		{
 			MaxSpeed = GetMovementSettingsExtendSafe()->FlyingSettings.FlyFasterMaxSpeed;
 		}
@@ -2014,7 +1729,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 		bIsSwimOnSurface = false;
 		if (IsInWater() && !bJumpingOutOfWater && !IsClimbing())
 		{
-			SetMovementMode(MOVE_Swimming);
+			EnterSwimming();
 		}
 	}
 	
@@ -2038,6 +1753,9 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 		!CurrentRootMotion.HasVelocity() &&
 		IsMovingOnGround())
 	{
+		float DefaultStandRadius;
+		float DefaultStandHalfHeight;
+		GetDefaultScaledCapsule(DefaultStandHalfHeight, DefaultStandRadius);
 		if (EyeHeightTrace(DefaultStandRadius * 5, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector(), true))
 		{
 			float AccelHorDegree;
@@ -2062,7 +1780,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 			SetMovementMode(MOVE_Falling);
 		}
 	}
-	
+
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
 }
 
@@ -2078,280 +1796,6 @@ void UAlsCharacterMovementComponent_Extend::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(UAlsCharacterMovementComponent_Extend, OnRopeDistance);
 	DOREPLIFETIME(UAlsCharacterMovementComponent_Extend, MoveUpDownSpeed);
 }
-
-/*void UAlsCharacterMovementComponent_Extend::ComputeFloorDist(const FVector& CapsuleLocation, float LineDistance,
-	float SweepDistance, FFindFloorResult& OutFloorResult, float SweepRadius,
-	const FHitResult* DownwardSweepResult) const
-{
-	UCharacterMovementComponent::ComputeFloorDist(CapsuleLocation, LineDistance, SweepDistance, OutFloorResult, SweepRadius,
-	                        DownwardSweepResult);
-}*/
-
-/*void UAlsCharacterMovementComponent_Extend::PhysWalking(float DeltaTime, int32 IterationsCount)
-{
-	RefreshGroundedMovementSettings();
-
-	auto Iterations{IterationsCount};
-
-	// TODO Copied with modifications from UCharacterMovementComponent::PhysWalking(). After the
-	// TODO release of a new engine version, this code should be updated to match the source code.
-
-	// ReSharper disable All
-
-	// SCOPE_CYCLE_COUNTER(STAT_CharPhysWalking);
-
-	if (DeltaTime < MIN_TICK_TIME)
-	{
-		return;
-	}
-
-	if (!CharacterOwner || (!CharacterOwner->Controller && !bRunPhysicsWithNoController && !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && (CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)))
-	{
-		Acceleration = FVector::ZeroVector;
-		Velocity = FVector::ZeroVector;
-		return;
-	}
-
-	if (!UpdatedComponent->IsQueryCollisionEnabled())
-	{
-		SetMovementMode(MOVE_Walking);
-		return;
-	}
-
-	// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN before Iteration (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
-
-	bJustTeleported = false;
-	bool bCheckedFall = false;
-	bool bTriedLedgeMove = false;
-	float remainingTime = DeltaTime;
-
-	const EMovementMode StartingMovementMode = MovementMode;
-	const uint8 StartingCustomMovementMode = CustomMovementMode;
-
-	// Perform the move
-	while ( (remainingTime >= MIN_TICK_TIME) && (Iterations < MaxSimulationIterations) && CharacterOwner && (CharacterOwner->Controller || bRunPhysicsWithNoController || HasAnimRootMotion() || CurrentRootMotion.HasOverrideVelocity() || (CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)) )
-	{
-		Iterations++;
-		bJustTeleported = false;
-		const float timeTick = GetSimulationTimeStep(remainingTime, Iterations);
-		remainingTime -= timeTick;
-
-		// Save current values
-		UPrimitiveComponent * const OldBase = GetMovementBase();
-		const FVector PreviousBaseLocation = (OldBase != NULL) ? OldBase->GetComponentLocation() : FVector::ZeroVector;
-		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
-		const FFindFloorResult OldFloor = CurrentFloor;
-
-		RestorePreAdditiveRootMotionVelocity();
-
-		// Ensure velocity is horizontal.
-		MaintainHorizontalGroundVelocity();
-		const FVector OldVelocity = Velocity;
-		Acceleration = FVector::VectorPlaneProject(Acceleration, -GetGravityDirection());
-
-		static const auto* EnsureAlwaysEnabledConsoleVariable{
-			IConsoleManager::Get().FindConsoleVariable(TEXT("p.LedgeMovement.ApplyDirectMove"))
-		};
-		check(EnsureAlwaysEnabledConsoleVariable != nullptr)
-
-		// Apply acceleration
-		const bool bSkipForLedgeMove = bTriedLedgeMove && EnsureAlwaysEnabledConsoleVariable->GetBool();
-		if( !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && !bSkipForLedgeMove )
-		{
-			CalcVelocity(timeTick, GroundFriction, false, GetMaxBrakingDeceleration());
-			// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN after CalcVelocity (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
-		}
-
-		ApplyRootMotionToVelocity(timeTick);
-		// devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("PhysWalking: Velocity contains NaN after Root Motion application (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
-
-		if (MovementMode != StartingMovementMode || CustomMovementMode != StartingCustomMovementMode)
-		{
-			// Root motion could have taken us out of our current mode
-			// No movement has taken place this movement tick so we pass on full time/past iteration count
-			StartNewPhysics(remainingTime+timeTick, Iterations-1);
-			return;
-		}
-
-		// Compute move parameters
-		const FVector MoveVelocity = Velocity;
-		const FVector Delta = timeTick * MoveVelocity;
-		const bool bZeroDelta = Delta.IsNearlyZero();
-		FStepDownResult StepDownResult;
-
-		if ( bZeroDelta )
-		{
-			remainingTime = 0.f;
-		}
-		else
-		{
-			// try to move forward
-			MoveAlongFloor(MoveVelocity, timeTick, &StepDownResult);
-
-			if (IsSwimming()) //just entered water
-			{
-				StartSwimming(OldLocation, OldVelocity, timeTick, remainingTime, Iterations);
-				return;
-			}
-			else if (MovementMode != StartingMovementMode || CustomMovementMode != StartingCustomMovementMode)
-			{
-				// pawn ended up in a different mode, probably due to the step-up-and-over flow
-				// let's refund the estimated unused time (if any) and keep moving in the new mode
-				const float DesiredDist = UE_REAL_TO_FLOAT(Delta.Size());
-				if (DesiredDist > UE_KINDA_SMALL_NUMBER)
-				{
-					const float ActualDist = UE_REAL_TO_FLOAT(ProjectToGravityFloor(UpdatedComponent->GetComponentLocation() - OldLocation).Size());
-					remainingTime += timeTick * (1.f - FMath::Min(1.f,ActualDist/DesiredDist));
-				}
-				StartNewPhysics(remainingTime,Iterations);
-				return;
-			}
-		}
-
-		// Update floor.
-		// StepUp might have already done it for us.
-		if (StepDownResult.bComputedFloor)
-		{
-			CurrentFloor = StepDownResult.FloorResult;
-		}
-		else
-		{
-			FindFloor_Custom(UpdatedComponent->GetComponentLocation(), CurrentFloor, bZeroDelta, NULL);
-		}
-
-		// check for ledges here
-		const bool bCheckLedges = !CanWalkOffLedges();
-		if ( bCheckLedges && !CurrentFloor.IsWalkableFloor() )
-		{
-			// calculate possible alternate movement
-			const FVector NewDelta = bTriedLedgeMove ? FVector::ZeroVector : GetLedgeMove(OldLocation, Delta, OldFloor);
-			if ( !NewDelta.IsZero() )
-			{
-				// first revert this move
-				RevertMove(OldLocation, OldBase, PreviousBaseLocation, OldFloor, false);
-
-				// avoid repeated ledge moves if the first one fails
-				bTriedLedgeMove = true;
-
-				// Try new movement direction
-				Velocity = NewDelta/timeTick;
-				remainingTime += timeTick;
-				Iterations--;
-				continue;
-			}
-			else
-			{
-				// see if it is OK to jump
-				// @todo collision : only thing that can be problem is that oldbase has world collision on
-				bool bMustJump = bZeroDelta || (OldBase == NULL || (!OldBase->IsQueryCollisionEnabled() && MovementBaseUtility::IsDynamicBase(OldBase)));
-				if ( (bMustJump || !bCheckedFall) && CheckFall(OldFloor, CurrentFloor.HitResult, Delta, OldLocation, remainingTime, timeTick, Iterations, bMustJump) )
-				{
-					return;
-				}
-				bCheckedFall = true;
-
-				// revert this move
-				RevertMove(OldLocation, OldBase, PreviousBaseLocation, OldFloor, true);
-				remainingTime = 0.f;
-				break;
-			}
-		}
-		else
-		{
-			// Validate the floor check
-			if (CurrentFloor.IsWalkableFloor())
-			{
-				if (ShouldCatchAir(OldFloor, CurrentFloor))
-				{
-					HandleWalkingOffLedge(OldFloor.HitResult.ImpactNormal, OldFloor.HitResult.Normal, OldLocation, timeTick);
-					if (IsMovingOnGround())
-					{
-						// TODO Start of custom ALS code block.
-
-						ApplyPendingPenetrationAdjustment();
-
-						// TODO End of custom ALS code block.
-
-						// If still walking, then fall. If not, assume the user set a different mode they want to keep.
-						StartFalling(Iterations, remainingTime, timeTick, Delta, OldLocation);
-					}
-					return;
-				}
-
-				// TODO Start of custom ALS code block.
-
-				ApplyPendingPenetrationAdjustment();
-
-				// TODO End of custom ALS code block.
-
-				AdjustFloorHeight();
-				SetBase(CurrentFloor.HitResult.Component.Get(), CurrentFloor.HitResult.BoneName);
-			}
-			else if (CurrentFloor.HitResult.bStartPenetrating && remainingTime <= 0.f)
-			{
-				// The floor check failed because it started in penetration
-				// We do not want to try to move downward because the downward sweep failed, rather we'd like to try to pop out of the floor.
-				FHitResult Hit(CurrentFloor.HitResult);
-				Hit.TraceEnd = Hit.TraceStart + MAX_FLOOR_DIST * -GetGravityDirection();
-				const FVector RequestedAdjustment = GetPenetrationAdjustment(Hit);
-				ResolvePenetration(RequestedAdjustment, Hit, UpdatedComponent->GetComponentQuat());
-				bForceNextFloorCheck = true;
-			}
-
-			// check if just entered water
-			if ( IsSwimming() )
-			{
-				StartSwimming(OldLocation, Velocity, timeTick, remainingTime, Iterations);
-				return;
-			}
-
-			// See if we need to start falling.
-			if (!CurrentFloor.IsWalkableFloor() && !CurrentFloor.HitResult.bStartPenetrating)
-			{
-				const bool bMustJump = bJustTeleported || bZeroDelta || (OldBase == NULL || (!OldBase->IsQueryCollisionEnabled() && MovementBaseUtility::IsDynamicBase(OldBase)));
-				if ((bMustJump || !bCheckedFall) && CheckFall(OldFloor, CurrentFloor.HitResult, Delta, OldLocation, remainingTime, timeTick, Iterations, bMustJump) )
-				{
-					return;
-				}
-				bCheckedFall = true;
-			}
-		}
-
-
-		// Allow overlap events and such to change physics state and velocity
-		if (IsMovingOnGround())
-		{
-			// Make velocity reflect actual move
-			if( !bJustTeleported && !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && timeTick >= MIN_TICK_TIME)
-			{
-				// TODO Start of custom ALS code block.
-
-				PrePenetrationAdjustmentVelocity = MoveVelocity;
-				bPrePenetrationAdjustmentVelocityValid = true;
-
-				// TODO End of custom ALS code block.
-
-				// TODO-RootMotionSource: Allow this to happen during partial override Velocity, but only set allowed axes?
-				Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / timeTick;
-				MaintainHorizontalGroundVelocity();
-			}
-		}
-
-		// If we didn't move at all this iteration then abort (since future iterations will also be stuck).
-		if (UpdatedComponent->GetComponentLocation() == OldLocation)
-		{
-			remainingTime = 0.f;
-			break;
-		}
-	}
-
-	if (IsMovingOnGround())
-	{
-		MaintainHorizontalGroundVelocity();
-	}
-
-	// ReSharper restore All
-}*/
 
 void UAlsCharacterMovementComponent_Extend::PhysicsVolumeChanged(APhysicsVolume* NewVolume)
 {
@@ -2372,48 +1816,84 @@ APhysicsVolume* UAlsCharacterMovementComponent_Extend::GetPhysicsVolume() const
 
 bool UAlsCharacterMovementComponent_Extend::IsInWater() const
 {
-	bool result = false;
-	const auto Position = GetWaterSurface();
-	if (GetWaterInfoForSwim().WaterBodyIdx >= 0)
+	// Check is overlap water.
+	if (GetWaterInfoForSwim().WaterBodyIdx < 0)
 	{
-		if ((UpdatedComponent->GetComponentLocation() - Position).Z <= -GetMovementSettingsExtendSafe()->SwimmingSettings.BeginSwimDepth)
-		{
-			result = true;
-		}
-		else
-		{
-			FFindFloorResult FloorResult;
-			FindFloor(UpdatedComponent->GetComponentLocation(), FloorResult, false);
-			if (FloorResult.IsWalkableFloor())
-			{
-				if (UpdatedComponent->GetComponentLocation().Z < Position.Z)
-				{
-					result = true;
-				}
-				else
-				{
-					result = false;
-				}
-			}
-			else if(UpdatedComponent->GetComponentLocation().Z < Position.Z)
-			{
-				result = true;
-			}
-		}
+		return false;
 	}
-	return result;
+
+	const auto Position = GetWaterSurface();
+	
+	// TODO: Fixing is in water check
+	// If is walking, we check if walking towards water.
+	// Get params.
+	/** const float ComponentScale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	const auto SwimRadius;
+	const auto SwimHalfHeight;
+
+	const auto StandRadius = DefaultStandRadius * ComponentScale;
+	const auto StandHalfHeight = (Stance == AlsStanceTags::Crouching ? GetCrouchedHalfHeight() : DefaultStandHalfHeight) * ComponentScale;
+		
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ComputeFloorDist), false, CharacterOwner);
+	QueryParams.bTraceIntoSubComponents = true;
+	QueryParams.bReplaceHitWithSubComponents = false;
+	FCollisionResponseParams ResponseParam;
+	InitCollisionParams(QueryParams, ResponseParam);
+	
+	// Check floor hit.
+	float TraceHeight = -1;
+	float TraceCapsuleRadius = -1;
+	float TraceCapsuleHalfHeight = -1;
+
+	if (IsWalking())
+	{
+		TraceHeight = SwimHalfHeight;
+		TraceCapsuleRadius = SwimRadius;
+		TraceCapsuleHalfHeight = SwimHalfHeight;
+	}
+	//else if (IsSwimming())
+	//{
+	//	TraceHeight = StandHalfHeight;
+	//	TraceCapsuleRadius = StandRadius;
+	//	TraceCapsuleHalfHeight = StandHalfHeight;
+	//}
+	
+	FHitResult Hit;
+	FloorSweepTest(Hit, UpdatedComponent->GetComponentLocation() + GetGravityDirection() * -TraceHeight,
+		UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetCollisionObjectType(),
+		FCollisionShape::MakeCapsule(TraceCapsuleRadius, TraceCapsuleHalfHeight),
+		QueryParams, ResponseParam);
+
+	if (Hit.IsValidBlockingHit())
+	{
+		auto SwimCapsuleRealLoc = Hit.Location;
+		DrawDebugBox(GetWorld(), SwimCapsuleRealLoc, FVector(5), FColor::Red, false, 0, 1, 5);
+		return Hit.Location.Z < Position.Z;
+	} */
+
+	// Common situation
+	return UpdatedComponent->GetComponentLocation().Z < Position.Z;
 }
 
 float UAlsCharacterMovementComponent_Extend::ImmersionDepth() const
 {
-	const float DefaultHalfHeight = DefaultStandHalfHeight;
+	float ScaledHalfHeight;
+	float ScaledRadius;
+	GetDefaultScaledCapsule(ScaledHalfHeight, ScaledRadius);
+	
+	bool bValid;
+	const auto Settings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
+	if (bValid)
+	{
+		ScaledHalfHeight = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetScaledHaleHeight(Settings.CapsuleHalfHeight);
+	}
 
-	float depth = 0.f;
+	float Depth = 0.f;
 	if (GetWaterInfoForSwim().WaterBodyIdx >= 0)
 	{
-		depth = FMath::Clamp(GetImmerseDepth() / (DefaultHalfHeight * 2), 0.f, 1.0f);
+		Depth = FMath::Clamp(GetImmerseDepth() / (ScaledHalfHeight * 2), 0.f, 1.0f);
 	}
-	return depth;
+	return Depth;
 }
 
 #pragma region Slide
