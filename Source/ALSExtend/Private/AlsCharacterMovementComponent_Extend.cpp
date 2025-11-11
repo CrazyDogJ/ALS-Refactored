@@ -192,7 +192,13 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 	// Out water using Walking Movement Mode.
 	if (!IsInWater() && IsSwimming())
 	{
-		ExitSwimming();
+		if (CurrentFloor.IsWalkableFloor())
+		{
+			SetMovementMode(MOVE_Walking);
+			return;
+		}
+
+		SetMovementMode(MOVE_Falling);
 	}
 
 	//may have left water - if so, script might have set new physics mode
@@ -236,6 +242,17 @@ void UAlsCharacterMovementComponent_Extend::StartSwimming(FVector OldLocation, F
 	{
 		PhysSwimming(remainingTime, Iterations);
 	}
+}
+
+bool UAlsCharacterMovementComponent_Extend::CanCrouchInCurrentState() const
+{
+	// Fix swimming capsule return to uncrouch.
+	if (IsSwimming())
+	{
+		return true;
+	}
+	
+	return Super::CanCrouchInCurrentState();
 }
 
 void UAlsCharacterMovementComponent_Extend::SwimAtSurface(float deltaTime)
@@ -334,28 +351,6 @@ UWaterBodyComponent* UAlsCharacterMovementComponent_Extend::GetCurrentWaterBodyC
 	}
 	
 	return nullptr;
-}
-
-void UAlsCharacterMovementComponent_Extend::EnterSwimming()
-{
-	SetMovementMode(MOVE_Swimming);
-
-	// Set capsule size
-	/** TODO : Capsule Size */
-	
-	//reset wants to jump out of water after entering swimming
-	bWantsToJumpOutOfWater = false;
-}
-
-void UAlsCharacterMovementComponent_Extend::ExitSwimming()
-{
-	if (CurrentFloor.IsWalkableFloor())
-	{
-		SetMovementMode(MOVE_Walking);
-		return;
-	}
-
-	SetMovementMode(MOVE_Falling);
 }
 
 FWaterInfoForSwim UAlsCharacterMovementComponent_Extend::GetWaterInfoForSwim() const
@@ -696,7 +691,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 				GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Climb Down to Floor"));
 			}
 		}
-		StopClimbing(deltaTime, Iterations, false, bClimbDownFloor);
+		StopClimbing(deltaTime, Iterations, bClimbDownFloor);
 		return;
 	}
 
@@ -717,14 +712,8 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 			if (Character->StartMantlingFreeClimb())
 			{
 				if (DebugDrawSwitch) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Try mantle"));
-				StopClimbing(deltaTime, Iterations, false, false);
+				StopClimbing(deltaTime, Iterations, false);
 			}
-			//if (Character->CheckStartMantlingFreeClimb())
-			//{
-			//	if (DebugDrawSwitch)
-			//	GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Can Mantle"));
-			//	StopClimbing(deltaTime, Iterations, true, false);
-			//}
 		}
 	}
 	
@@ -806,7 +795,7 @@ bool UAlsCharacterMovementComponent_Extend::HasReachedEdge() const
 	return !EyeHeightTrace(TraceDistance, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector(), false);
 }
 
-void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 Iterations, bool bShouldMantle, bool bShouldClimbDownFloor)
+void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 Iterations, bool bShouldClimbDownFloor)
 {
 	bWantsToClimb = false;
 	
@@ -814,8 +803,7 @@ void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 
 	{
 		SetMovementMode(MOVE_Walking);
 		StartNewPhysics(deltaTime, Iterations);
-		StopMovementImmediately();
-		auto Character = Cast<AAlsCharacter_Extend>(CharacterOwner);
+		const auto Character = Cast<AAlsCharacter_Extend>(CharacterOwner);
 		Character->GetMesh()->GetAnimInstance()->Montage_Play(GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDownFloorMontage);
 	}
 	else
@@ -857,7 +845,7 @@ bool UAlsCharacterMovementComponent_Extend::ClimbDownToFloor() const
 	if (Velocity.Z < 0 && Acceleration.Z < 0)
 	{
 		FFindFloorResult FloorResult;
-		// TODO : Fix climbing down floor teleport visual bug.
+		// TODO : Fix climbing down floor teleport visual bug. maybe we can use root motion montage to lerp to the ground.
 		const FVector FindFloorLocation = UpdatedComponent->GetComponentLocation();
 
 		// First simple check
@@ -1031,8 +1019,7 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	FHitResult EdgeHit;
 	const FVector EdgeFindStart = FVector(CheckStartClimbLoc.X, CheckStartClimbLoc.Y, CompBottomLoc.Z);
 	const FVector EdgeFindEnd = EdgeFindStart + CheckStartClimbNormal * DefaultRadius * 2;
-	//TODO ECC_Visibility should be another collision channel?
-	GetWorld()->SweepSingleByChannel(EdgeHit, EdgeFindStart, EdgeFindEnd, FQuat::Identity, ECC_Visibility,
+	GetWorld()->SweepSingleByChannel(EdgeHit, EdgeFindStart, EdgeFindEnd, FQuat::Identity, UpdatedComponent->GetCollisionObjectType(),
 	                                 FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
 	if (!EdgeHit.bBlockingHit)
 	{
@@ -1535,6 +1522,17 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(DefaultRadius, FinalHalfHeight);
 		Cast<AAlsCharacter_Extend>(CharacterOwner)->UpdateMeshRelativeLocation(FinalHalfHeight, true);
 	}
+
+	if (IsSwimming() && CapsuleSizeSettings)
+	{
+		bool bValid;
+		const auto Settings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
+		if (bValid)
+		{
+			GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(Settings.CapsuleRadius, Settings.CapsuleHalfHeight);
+			Cast<AAlsCharacter_Extend>(CharacterOwner)->UpdateMeshRelativeLocation(Settings.CapsuleHalfHeight, true);
+		}
+	}
 	
 	if (IsClimbing())
 	{
@@ -1542,12 +1540,16 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		{
 			bSwimToClimb = true;
 		}
-		bool bValid;
-		const auto Settings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::FreeClimbing, bValid);
-		if (bValid)
+		if (CapsuleSizeSettings)
 		{
-			GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(Settings.CapsuleRadius, Settings.CapsuleHalfHeight);
-			Cast<AAlsCharacter_Extend>(CharacterOwner)->UpdateMeshRelativeLocation(Settings.CapsuleHalfHeight, true);
+			bool bValid;
+			const auto Settings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::FreeClimbing, bValid);
+			if (bValid)
+			{
+				GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(Settings.CapsuleRadius, Settings.CapsuleHalfHeight);
+				// We don't treat climbing like crouch logic(move mesh and capsule to the ground. just set size not move.)
+				//Cast<AAlsCharacter_Extend>(CharacterOwner)->UpdateMeshRelativeLocation(Settings.CapsuleHalfHeight, true);
+			}
 		}
 		
 		bool Temp;
@@ -1729,7 +1731,10 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 		bIsSwimOnSurface = false;
 		if (IsInWater() && !bJumpingOutOfWater && !IsClimbing())
 		{
-			EnterSwimming();
+			SetMovementMode(MOVE_Swimming);
+			
+			//reset wants to jump out of water after entering swimming
+			bWantsToJumpOutOfWater = false;
 		}
 	}
 	
@@ -1822,55 +1827,20 @@ bool UAlsCharacterMovementComponent_Extend::IsInWater() const
 		return false;
 	}
 
+	float HalfHeight;
+	float Radius;
+	GetDefaultScaledCapsule(HalfHeight, Radius);
+	
 	const auto Position = GetWaterSurface();
-	
-	// TODO: Fixing is in water check
-	// If is walking, we check if walking towards water.
-	// Get params.
-	/** const float ComponentScale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
-	const auto SwimRadius;
-	const auto SwimHalfHeight;
-
-	const auto StandRadius = DefaultStandRadius * ComponentScale;
-	const auto StandHalfHeight = (Stance == AlsStanceTags::Crouching ? GetCrouchedHalfHeight() : DefaultStandHalfHeight) * ComponentScale;
-		
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ComputeFloorDist), false, CharacterOwner);
-	QueryParams.bTraceIntoSubComponents = true;
-	QueryParams.bReplaceHitWithSubComponents = false;
-	FCollisionResponseParams ResponseParam;
-	InitCollisionParams(QueryParams, ResponseParam);
-	
-	// Check floor hit.
-	float TraceHeight = -1;
-	float TraceCapsuleRadius = -1;
-	float TraceCapsuleHalfHeight = -1;
-
+	const auto Bottom = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetCapsuleBottom();
+	// Is negative number
+	const float BottomDepth = Bottom.Z - Position.Z;
+	// Walking situation
 	if (IsWalking())
 	{
-		TraceHeight = SwimHalfHeight;
-		TraceCapsuleRadius = SwimRadius;
-		TraceCapsuleHalfHeight = SwimHalfHeight;
+		return BottomDepth < -1 * HalfHeight;
 	}
-	//else if (IsSwimming())
-	//{
-	//	TraceHeight = StandHalfHeight;
-	//	TraceCapsuleRadius = StandRadius;
-	//	TraceCapsuleHalfHeight = StandHalfHeight;
-	//}
 	
-	FHitResult Hit;
-	FloorSweepTest(Hit, UpdatedComponent->GetComponentLocation() + GetGravityDirection() * -TraceHeight,
-		UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetCollisionObjectType(),
-		FCollisionShape::MakeCapsule(TraceCapsuleRadius, TraceCapsuleHalfHeight),
-		QueryParams, ResponseParam);
-
-	if (Hit.IsValidBlockingHit())
-	{
-		auto SwimCapsuleRealLoc = Hit.Location;
-		DrawDebugBox(GetWorld(), SwimCapsuleRealLoc, FVector(5), FColor::Red, false, 0, 1, 5);
-		return Hit.Location.Z < Position.Z;
-	} */
-
 	// Common situation
 	return UpdatedComponent->GetComponentLocation().Z < Position.Z;
 }

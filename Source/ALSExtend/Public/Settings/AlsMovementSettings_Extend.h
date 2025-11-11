@@ -161,12 +161,6 @@ struct ALSEXTEND_API FAlsSwimmingSettings
 
 	UPROPERTY(EditDefaultsOnly)
 	bool bIncludeWave = true;
-	
-	/**
-	 * Water surface to capsule bottom distance to start swim.
-	 */
-	UPROPERTY(EditDefaultsOnly)
-	float BeginSwimDepth = 75.0f;
 
 	UPROPERTY(EditDefaultsOnly)
 	float SwimToSurfaceBuoyancyAdditive = 20.0f;

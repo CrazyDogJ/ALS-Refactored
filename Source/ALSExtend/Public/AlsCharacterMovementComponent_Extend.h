@@ -28,6 +28,7 @@ private:
 	virtual float ImmersionDepth() const override;
 	virtual void PhysSwimming(float deltaTime, int32 Iterations) override;
 	virtual void StartSwimming(FVector OldLocation, FVector OldVelocity, float timeTick, float remainingTime, int32 Iterations) override;
+	virtual bool CanCrouchInCurrentState() const override;
 	
 	void SwimAtSurface(float deltaTime);
 
@@ -93,9 +94,6 @@ public:
 	UFUNCTION(BlueprintCallable)
 	UWaterBodyComponent* GetCurrentWaterBodyComponent() const;
 
-	void EnterSwimming();
-	void ExitSwimming();
-
 	UPROPERTY(Transient)
 	bool bJumpInputUnderWater = false;
 	
@@ -147,7 +145,7 @@ private:
 	void AlignClimbDashDirection();
 	bool ShouldStopClimbing();
 	bool HasReachedEdge() const;
-	void StopClimbing(float deltaTime, int32 Iterations, bool bShouldMantle, bool bShouldClimbDownFloor);
+	void StopClimbing(float deltaTime, int32 Iterations, bool bShouldClimbDownFloor);
 	void MoveAlongClimbingSurface(float deltaTime);
 	void SnapToClimbingSurface(float deltaTime) const;
 	bool ClimbDownToFloor() const;

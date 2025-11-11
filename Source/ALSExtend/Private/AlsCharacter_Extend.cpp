@@ -622,7 +622,8 @@ void AAlsCharacter_Extend::SetLookCompAndSocket(UPrimitiveComponent* InComp, con
 
 FVector AAlsCharacter_Extend::GetCapsuleBottom()
 {
-	return GetActorLocation() - FVector(0,0,GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	const double CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	return GetActorLocation() + GetGravityDirection() * CapsuleHalfHeight;
 }
 
 void AAlsCharacter_Extend::SetCurrentOverlayClass(FName InTag, TSubclassOf<UAnimInstance> InAnimClass)
@@ -691,8 +692,7 @@ void AAlsCharacter_Extend::SwimUp()
 {
 	if (MovementComponent_Extend->IsSwimming() || MovementComponent_Extend->IsFlying())
 	{
-		FVector Direction{FVector::Zero()};
-		Direction.Z = 1.f;
+		const FVector Direction{ GetGravityDirection() * -1 };
 		AddMovementInput(Direction, 1.f);
 		if (!MovementComponent_Extend->bIsSwimOnSurface)
 		{
@@ -934,8 +934,7 @@ void AAlsCharacter_Extend::SwimDown()
 {
 	if (MovementComponent_Extend->IsSwimming() || MovementComponent_Extend->IsFlying())
 	{
-		FVector Direction{FVector::Zero()};
-		Direction.Z = -1.f;
+		const FVector Direction{ GetGravityDirection() };
 		AddMovementInput(Direction, 1.0f);
 	}
 }
@@ -1238,7 +1237,10 @@ void AAlsCharacter_Extend::RefreshVelocityYawAngle()
 		if (UE_REAL_TO_FLOAT(GetVelocity().Size2D()) < 1.0f && LocomotionState.bHasInput)
 		{
 			const auto ViewUpVector = UKismetMathLibrary::GetUpVector(ViewState.Rotation);
-			const auto ZViewUpVector = LocomotionState.Velocity.Z < 0.0f ? ViewUpVector : -ViewUpVector;
+			FVector VelocityDir;
+			float Length;
+			LocomotionState.Velocity.ToDirectionAndLength(VelocityDir, Length);
+			const auto ZViewUpVector = VelocityDir.Dot(GetGravityDirection()) > 0 ? ViewUpVector : -ViewUpVector;
 			// Update velocity yaw angle by view up vector.
 			LocomotionState.VelocityYawAngle = UE_REAL_TO_FLOAT(UAlsVector::DirectionToAngleXY(ZViewUpVector));
 		}
