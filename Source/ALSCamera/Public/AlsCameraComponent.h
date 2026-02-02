@@ -35,7 +35,7 @@ protected:
 	FPostProcessSettings OverridePostProcessSettings;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", Meta = (ClampMin = 0, ClampMax = 1))
-	float OverridePostProcessWeight;
+	float OverridePostProcessWeight = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
 	float MinOffsetX = -100;
@@ -48,10 +48,6 @@ protected:
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Settings")
 	float CurrentOffsetX = 0;
-
-	//Useful for controller possessed another pawn.
-	UPROPERTY(BlueprintReadWrite, Category = "State")
-	AController* OverrideController;
 
 	//Photo Mode Start
 	/** Used for photo mode */

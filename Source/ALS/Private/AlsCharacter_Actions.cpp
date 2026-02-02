@@ -1125,7 +1125,7 @@ void AAlsCharacter::StopRagdollingImplementation()
 	}
 	// Stop ragdoll fixing end
 	
-	auto& FinalRagdollPose{AnimationInstance->SnapshotFinalRagdollPose()};
+	auto& FinalRagdollPose{GetAnimationInstance()->SnapshotFinalRagdollPose()};
 
 	const auto PelvisTransform{GetMesh()->GetSocketTransform(UAlsConstants::PelvisBoneName())};
 	const auto PelvisRotation{PelvisTransform.Rotator()};

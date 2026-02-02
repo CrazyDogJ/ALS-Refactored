@@ -51,9 +51,6 @@ public:
 	// Override the properties
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
 	TObjectPtr<UAlsMovementSettings_Extend> MovementSettings_Extend;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	TObjectPtr<UAlsCapsuleSizeSettings> CapsuleSizeSettings;
 	
 	// Sets default values for this component's properties
 	UAlsCharacterMovementComponent_Extend();

@@ -18,6 +18,12 @@ struct ALSCAMERA_API FAlsFirstPersonCameraSettings
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	FName CameraSocketName{TEXTVIEW("FirstPersonCamera")};
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
+	FName CameraLockCurve{TEXTVIEW("ViewBlock")};
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
+	float InterpSpeed{15.0f};
 };
 
 USTRUCT(BlueprintType)

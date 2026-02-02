@@ -11,7 +11,6 @@
 #include "AlsCharacterMovementComponent_Extend.h"
 #include "Utility/CustomMovementMode.h"
 #include "Components/CapsuleComponent.h"
-#include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Settings/AlsCharacterSettings.h"
@@ -23,29 +22,10 @@
 
 void AAlsCharacter_Extend::OnConstruction(const FTransform& Transform)
 {
-	// Pass current movement settings to the movement component.
-	RuntimeMovementSettings = DuplicateObject(MovementSettings, this);
-	MovementComponent_Extend->MovementSettings = RuntimeMovementSettings;
-
-	RuntimeMovementSettings_Extend = DuplicateObject(MovementSettings_Extend, this);
-	MovementComponent_Extend->MovementSettings_Extend = RuntimeMovementSettings_Extend;
-
-	RuntimeCapsuleSizeSettings = DuplicateObject(CapsuleSizeSettings, this);
-	MovementComponent_Extend->CapsuleSizeSettings = RuntimeCapsuleSizeSettings;
-	
 	Super::OnConstruction(Transform);
 	
 	// Init capsule size.
-	if (CapsuleSizeSettings)
-	{
-		bool bValid;
-		const auto Found = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);
-		if (bValid)
-		{
-			GetCapsuleComponent()->SetCapsuleSize(Found.CapsuleRadius, Found.CapsuleHalfHeight);
-			UpdateMeshRelativeLocation(Found.CapsuleHalfHeight);
-		}
-	}
+	InitCapsuleSize();
 }
 
 void AAlsCharacter_Extend::CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo)
@@ -88,6 +68,30 @@ void AAlsCharacter_Extend::ApplyDesiredStance()
 	{
 		Crouch();
 	}
+}
+
+void AAlsCharacter_Extend::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	// Runtime settings
+	RuntimeMovementSettings = DuplicateObject(MovementSettings, this);
+	MovementComponent_Extend->MovementSettings = RuntimeMovementSettings;
+
+	RuntimeMovementSettings_Extend = DuplicateObject(MovementSettings_Extend, this);
+	MovementComponent_Extend->MovementSettings_Extend = RuntimeMovementSettings_Extend;
+}
+
+void AAlsCharacter_Extend::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Runtime settings
+	RuntimeMovementSettings = nullptr;
+	MovementComponent_Extend->MovementSettings = nullptr;
+
+	RuntimeMovementSettings_Extend = nullptr;
+	MovementComponent_Extend->MovementSettings_Extend = nullptr;
+	
+	Super::EndPlay(EndPlayReason);
 }
 
 void AAlsCharacter_Extend::Tick(float DeltaSeconds)
@@ -163,7 +167,7 @@ void AAlsCharacter_Extend::OnStartCrouch(float HalfHeightAdjust, float ScaledHal
 	RecalculateBaseEyeHeight();
 
 	bool bValid;
-	const auto FoundSettings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
+	const auto FoundSettings = GetCapsuleSettings()->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
 	
 	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
 	if (bValid)
@@ -211,7 +215,7 @@ void AAlsCharacter_Extend::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfH
 	RecalculateBaseEyeHeight();
 
 	bool bValid;
-	const auto FoundSettings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);
+	const auto FoundSettings = GetCapsuleSettings()->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);
 
 	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
 	if (bValid)
@@ -248,17 +252,10 @@ void AAlsCharacter_Extend::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	if (APlayerState* PS = GetPlayerState<APlayerState>())
-	{
-		AbilitySystemComponent = Cast<UAbilitySystemComponent>(PS->GetComponentByClass(UAbilitySystemComponent::StaticClass()));
-		if (AbilitySystemComponent.IsValid())
-		{
-			AbilitySystemComponent->InitAbilityActorInfo(PS, this);
-			InitGameplayTagInASC();
-			GameplayTagBlueprintPropertyMap.Initialize(this, AbilitySystemComponent.Get());
-		}
-	}
-
+	// Ability system
+	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	InitGameplayTagInASC();
+	
 	// If we are controlled remotely, set animation timing to be driven by client's network updates. So timing and events remain in sync.
 	if (GetMesh() && IsReplicatingMovement() && (GetRemoteRole() == ROLE_AutonomousProxy && GetNetConnection() != nullptr))
 	{
@@ -277,24 +274,12 @@ void AAlsCharacter_Extend::PossessedBy(AController* NewController)
 void AAlsCharacter_Extend::OnPlayerStateChanged(APlayerState* NewPlayerState, APlayerState* OldPlayerState)
 {
 	Super::OnPlayerStateChanged(NewPlayerState, OldPlayerState);
-	
 	K2_OnPlayerStateRep();
 }
 
 void AAlsCharacter_Extend::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
-
-	if (APlayerState* PS = GetPlayerState<APlayerState>())
-	{
-		AbilitySystemComponent = Cast<UAbilitySystemComponent>(PS->GetComponentByClass(UAbilitySystemComponent::StaticClass()));
-		if (AbilitySystemComponent.IsValid())
-		{
-			AbilitySystemComponent->InitAbilityActorInfo(PS, this);
-			GameplayTagBlueprintPropertyMap.Initialize(this, AbilitySystemComponent.Get());
-		}
-	}
-	
 	K2_OnPlayerStateRep();
 }
 
@@ -463,9 +448,7 @@ void AAlsCharacter_Extend::PostInitializeComponents()
 	GetMesh()->AddTickPrerequisiteActor(this);
 
 	MovementComponent_Extend->OnPhysicsRotation.AddUObject(this, &ThisClass::CharacterMovement_OnPhysicsRotation);
-
-	AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
-
+	
 	ACharacter::PostInitializeComponents();
 }
 
@@ -489,22 +472,31 @@ void AAlsCharacter_Extend::RefreshRotationMode()
 
 UAbilitySystemComponent* AAlsCharacter_Extend::GetAbilitySystemComponent() const
 {
-	return AbilitySystemComponent.Get();
+	return AbilitySystemComponent;
 }
 
 AAlsCharacter_Extend::AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UAlsCharacterMovementComponent_Extend>(ACharacter::CharacterMovementComponentName))
 {
+	// Camera
 	Camera = CreateDefaultSubobject<UAlsCameraComponent>(FName{TEXTVIEW("Camera")});
 	Camera->SetupAttachment(GetMesh());
 	Camera->SetRelativeRotation_Direct({0.0f, 90.0f, 0.0f});
+	// Custom movement comp
 	MovementComponent_Extend = Cast<UAlsCharacterMovementComponent_Extend>(GetCharacterMovement());
+	// Motion warping for movement
 	MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(FName{TEXTVIEW("MotionWarping")});
+	// On hit on wall to auto climb.
 	GetCapsuleComponent()->SetNotifyRigidBodyCollision(true);
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AAlsCharacter_Extend::OnCapsuleHit);
+	// Custom behaviour when walking on specific floor.
 	GetCapsuleComponent()->bReturnMaterialOnMove = true;
-	
+	// Ragdoll damage
 	GetMesh()->OnComponentHit.AddDynamic(this, &AAlsCharacter_Extend::OnMeshHit);
+	// Ability system component.
+	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>("AbilitySystemComponent");
+	AbilitySystemComponent->SetIsReplicated(true);
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 }
 
 void AAlsCharacter_Extend::FixTargetRotation()
@@ -963,10 +955,11 @@ void AAlsCharacter_Extend::SwingMoveUpDown(float UpDown)
 	}
 }
 
-void AAlsCharacter_Extend::AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAsset)
+void AAlsCharacter_Extend::AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAsset, const TSubclassOf<UAnimInstance> AnimInstanceClass)
 {
 	GetMesh()->SetSkeletalMeshAsset(SkeletalMeshAsset);
-	AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
+	GetMesh()->SetAnimInstanceClass(AnimInstanceClass);
+	GetMesh()->SetAnimationMode(EAnimationMode::Type::AnimationBlueprint);
 }
 
 void AAlsCharacter_Extend::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
@@ -992,8 +985,12 @@ void AAlsCharacter_Extend::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActo
 	{
 		auto comp = MovementComponent_Extend;
 		float AccelHorDegree;
-		bool bCanStartClimbing = comp->CanStartClimbing(AccelHorDegree, comp->CurrentWallHits, comp->VelocityWallHit, comp->UpdatedComponent->GetComponentLocation(), comp->UpdatedComponent->GetForwardVector());
-		if (AccelHorDegree <= RuntimeMovementSettings_Extend->ClimbingSettings.MinHorizontalDegreesToStartClimbing && bCanStartClimbing)
+		bool bCanStartClimbing = comp->CanStartClimbing(AccelHorDegree, comp->CurrentWallHits, comp->VelocityWallHit,
+			comp->UpdatedComponent->GetComponentLocation(), comp->UpdatedComponent->GetForwardVector());
+
+		const float MinHorizontalDegreesToStartClimbing = RuntimeMovementSettings_Extend ?
+			RuntimeMovementSettings_Extend->ClimbingSettings.MinHorizontalDegreesToStartClimbing : 50.0f;
+		if (AccelHorDegree <= MinHorizontalDegreesToStartClimbing && bCanStartClimbing)
 		{
 			K2_AutoTryClimb();
 			comp->TryEnterClimbTime = 0.0f;
@@ -1044,6 +1041,27 @@ void AAlsCharacter_Extend::InitGameplayTagInASC()
 	SetGameplayTagInASC(Stance);
 	SetGameplayTagInASC(Gait);
 	SetGameplayTagInASC(LocomotionAction);
+}
+
+void AAlsCharacter_Extend::InitCapsuleSize()
+{
+	if (GetCapsuleSettings())
+	{
+		bool bValid;
+		const auto Found = GetCapsuleSettings()->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);
+		if (bValid)
+		{
+			GetCapsuleComponent()->SetCapsuleSize(Found.CapsuleRadius, Found.CapsuleHalfHeight);
+			UpdateMeshRelativeLocation(Found.CapsuleHalfHeight);
+		}
+	}
+}
+
+void AAlsCharacter_Extend::SetCapsuleSizeSettings(UAlsCapsuleSizeSettings* InCapsuleSizeSettings)
+{
+	CapsuleSizeSettings = InCapsuleSizeSettings;
+	// TODO : May cause issue.
+	InitCapsuleSize();
 }
 
 float AAlsCharacter_Extend::GetScaledRadius(float UnscaledRadius) const
@@ -1263,7 +1281,7 @@ bool AAlsCharacter_Extend::IsMantlingFinalAllowedToStart_Implementation(const FA
 	// Get overlapping water body actors;
 	TArray<FOverlapResult> OverlapResults;
 	bool bValid;
-	const auto FoundSettings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
+	const auto FoundSettings = GetCapsuleSettings()->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
 	if (bValid)
 	{
 		const float UnscaledRadius = FoundSettings.CapsuleRadius;
@@ -1290,7 +1308,7 @@ bool AAlsCharacter_Extend::IsMantlingFinalAllowedToStart_Implementation(const FA
 void AAlsCharacter_Extend::GetDefaultCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius)
 {
 	// Use settings first index for default capsule size.
-	if (const auto CapsuleSettings = RuntimeCapsuleSizeSettings ? RuntimeCapsuleSizeSettings : CapsuleSizeSettings)
+	if (const auto CapsuleSettings = GetCapsuleSettings())
 	{
 		bool bValid;
 		const auto FoundSettings = CapsuleSettings->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);

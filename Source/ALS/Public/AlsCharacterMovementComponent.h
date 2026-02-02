@@ -190,10 +190,8 @@ public:
 
 	const FAlsMovementGaitSettings& GetGaitSettings() const;
 
-private:
-	void RefreshGaitSettings();
+	virtual void RefreshGaitSettings();
 
-public:
 	const FGameplayTag& GetRotationMode() const;
 
 	void SetRotationMode(const FGameplayTag& NewRotationMode);

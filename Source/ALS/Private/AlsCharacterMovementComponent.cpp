@@ -926,10 +926,10 @@ void UAlsCharacterMovementComponent::SetStance(const FGameplayTag& NewStance)
 
 void UAlsCharacterMovementComponent::RefreshGroundedMovementSettings()
 {
-	auto WalkSpeed{GaitSettings.WalkForwardSpeed};
-	auto RunSpeed{GaitSettings.RunForwardSpeed};
+	auto WalkSpeed{GetGaitSettings().WalkForwardSpeed};
+	auto RunSpeed{GetGaitSettings().RunForwardSpeed};
 
-	if (GaitSettings.bAllowDirectionDependentMovementSpeed &&
+	if (GetGaitSettings().bAllowDirectionDependentMovementSpeed &&
 	    Velocity.SizeSquared() > UE_KINDA_SMALL_NUMBER &&
 	    IsValid(MovementSettings))
 	{
@@ -954,8 +954,8 @@ void UAlsCharacterMovementComponent::RefreshGroundedMovementSettings()
 			                                         .GetRangePct(static_cast<float>(FMath::Abs(VelocityAngle))))
 		};
 
-		WalkSpeed = FMath::Lerp(GaitSettings.WalkBackwardSpeed, GaitSettings.WalkForwardSpeed, ForwardSpeedAmount);
-		RunSpeed = FMath::Lerp(GaitSettings.RunBackwardSpeed, GaitSettings.RunForwardSpeed, ForwardSpeedAmount);
+		WalkSpeed = FMath::Lerp(GetGaitSettings().WalkBackwardSpeed, GetGaitSettings().WalkForwardSpeed, ForwardSpeedAmount);
+		RunSpeed = FMath::Lerp(GetGaitSettings().RunBackwardSpeed, GetGaitSettings().RunForwardSpeed, ForwardSpeedAmount);
 	}
 
 	// Map the character's current speed to the to the speed ranges from the movement settings. This allows
@@ -965,7 +965,7 @@ void UAlsCharacterMovementComponent::RefreshGroundedMovementSettings()
 
 	if (Speed > RunSpeed)
 	{
-		GaitAmount = FMath::GetMappedRangeValueClamped(FVector2f{RunSpeed, GaitSettings.SprintSpeed}, {2.0f, 3.0f}, Speed);
+		GaitAmount = FMath::GetMappedRangeValueClamped(FVector2f{RunSpeed, GetGaitSettings().SprintSpeed}, {2.0f, 3.0f}, Speed);
 	}
 	else if (Speed > WalkSpeed)
 	{
@@ -986,11 +986,11 @@ void UAlsCharacterMovementComponent::RefreshGroundedMovementSettings()
 	}
 	else if (MaxAllowedGait == AlsGaitTags::Sprinting)
 	{
-		MaxWalkSpeed = GaitSettings.SprintSpeed;
+		MaxWalkSpeed = GetGaitSettings().SprintSpeed;
 	}
 	else
 	{
-		MaxWalkSpeed = GaitSettings.RunForwardSpeed;
+		MaxWalkSpeed = GetGaitSettings().RunForwardSpeed;
 	}
 
 	MaxWalkSpeedCrouched = MaxWalkSpeed;
@@ -998,10 +998,10 @@ void UAlsCharacterMovementComponent::RefreshGroundedMovementSettings()
 	// Get acceleration, deceleration and ground friction using a curve. This
 	// allows us to precisely control the movement behavior at each speed.
 
-	if (ALS_ENSURE(IsValid(GaitSettings.AccelerationAndDecelerationAndGroundFrictionCurve)))
+	if (ALS_ENSURE(IsValid(GetGaitSettings().AccelerationAndDecelerationAndGroundFrictionCurve)))
 	{
 		const auto& AccelerationAndDecelerationAndGroundFrictionCurves{
-			GaitSettings.AccelerationAndDecelerationAndGroundFrictionCurve->FloatCurves
+			GetGaitSettings().AccelerationAndDecelerationAndGroundFrictionCurve->FloatCurves
 		};
 
 		MaxAccelerationWalking = AccelerationAndDecelerationAndGroundFrictionCurves[0].Eval(GaitAmount);

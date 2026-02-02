@@ -409,13 +409,17 @@ void UAlsCharacterMovementComponent_Extend::GetDefaultScaledCapsule(float& OutCa
 void UAlsCharacterMovementComponent_Extend::GetUnscaledCrouchHalfHeight(float& OutCapsuleHalfHeight) const
 {
 	OutCapsuleHalfHeight = GetCrouchedHalfHeight();
-	bool bValid;
-	const auto FoundSettings = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->
-		RuntimeCapsuleSizeSettings->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
 
-	if (bValid)
+	const auto AlsCharExtend = Cast<AAlsCharacter_Extend>(GetCharacterOwner());
+	if (!AlsCharExtend) return;
+	if (const auto FoundSettings = AlsCharExtend->GetCapsuleSettings())
 	{
-		OutCapsuleHalfHeight = FoundSettings.CapsuleHalfHeight;
+		bool bValid;
+		const auto CapsuleSize = FoundSettings->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
+		if (bValid)
+		{
+			OutCapsuleHalfHeight = CapsuleSize.CapsuleHalfHeight;
+		}
 	}
 }
 
@@ -1523,10 +1527,13 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		Cast<AAlsCharacter_Extend>(CharacterOwner)->UpdateMeshRelativeLocation(FinalHalfHeight, true);
 	}
 
-	if (IsSwimming() && CapsuleSizeSettings)
+	const auto AlsCharExtend = Cast<AAlsCharacter_Extend>(GetCharacterOwner());
+	if (!AlsCharExtend) return;
+	const auto FoundSettings = AlsCharExtend->GetCapsuleSettings();
+	if (IsSwimming() && FoundSettings)
 	{
 		bool bValid;
-		const auto Settings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
+		const auto Settings = FoundSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
 		if (bValid)
 		{
 			GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(Settings.CapsuleRadius, Settings.CapsuleHalfHeight);
@@ -1540,10 +1547,10 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		{
 			bSwimToClimb = true;
 		}
-		if (CapsuleSizeSettings)
+		if (FoundSettings)
 		{
 			bool bValid;
-			const auto Settings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::FreeClimbing, bValid);
+			const auto Settings = FoundSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::FreeClimbing, bValid);
 			if (bValid)
 			{
 				GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(Settings.CapsuleRadius, Settings.CapsuleHalfHeight);
@@ -1617,8 +1624,7 @@ float UAlsCharacterMovementComponent_Extend::GetMaxSpeed() const
 
 	if (IsWalking())
 	{
-		FFindFloorResult Hit;
-		FindFloor(UpdatedComponent->GetComponentLocation() + FVector(Acceleration.GetSafeNormal2D()), Hit, true);
+		const FFindFloorResult Hit = CurrentFloor;
 		float SlopeAngleDot = 0;
 		float FaceSlopeAmount = 0;
 
@@ -1850,12 +1856,16 @@ float UAlsCharacterMovementComponent_Extend::ImmersionDepth() const
 	float ScaledHalfHeight;
 	float ScaledRadius;
 	GetDefaultScaledCapsule(ScaledHalfHeight, ScaledRadius);
-	
-	bool bValid;
-	const auto Settings = CapsuleSizeSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
-	if (bValid)
+
+	const auto AlsCharExtend = Cast<AAlsCharacter_Extend>(GetCharacterOwner());
+	if (const auto FoundSettings = AlsCharExtend->GetCapsuleSettings())
 	{
-		ScaledHalfHeight = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetScaledHaleHeight(Settings.CapsuleHalfHeight);
+		bool bValid;
+        const auto Settings = FoundSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
+        if (bValid)
+        {
+        	ScaledHalfHeight = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetScaledHaleHeight(Settings.CapsuleHalfHeight);
+        }
 	}
 
 	float Depth = 0.f;

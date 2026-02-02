@@ -245,12 +245,16 @@ void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 	// Here is first person camera fix (will update control rotation)
 	if (Character->GetMesh()->GetAnimInstance() && FirstPersonOverride > 0.0f && Character->IsLocallyControlled())
 	{
-		auto ViewBlockCurveValue = Character->GetMesh()->GetAnimInstance()->GetCurveValue(UAlsConstants::ViewBlockCurveName());
+		const auto ViewBlockCurveValue = Character->GetMesh()->GetAnimInstance()->GetCurveValue(Settings->FirstPerson.CameraLockCurve);
 		if (ViewBlockCurveValue > 0)
 		{
+			// Clear roll
 			auto Rotation = GetFirstPersonCameraRotation();
 			Rotation.Roll = 0.0f;
-			Character->GetController()->SetControlRotation(Rotation);
+			// Interp first person camera rotation.
+			const auto CurrentRotation = Character->GetController()->GetControlRotation();
+			const auto InterpRotation = FMath::RInterpTo(CurrentRotation, Rotation, DeltaTime, Settings->FirstPerson.InterpSpeed);
+			Character->GetController()->SetControlRotation(InterpRotation);
 		}
 	}
 	

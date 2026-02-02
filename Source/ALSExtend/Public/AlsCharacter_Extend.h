@@ -8,7 +8,6 @@
 #include "Settings/AlsCapsuleSizeSettings.h"
 #include "AlsCameraComponent.h"
 #include "AlsCharacterMovementComponent_Extend.h"
-#include "GameplayEffectTypes.h"
 #include "GenericTeamAgentInterface.h"
 #include "MotionWarpingComponent.h"
 #include "AlsCharacter_Extend.generated.h"
@@ -54,20 +53,16 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character", Transient)
 	TObjectPtr<UAlsMovementSettings_Extend> RuntimeMovementSettings_Extend;
-
-	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character", Transient)
-	TObjectPtr<UAlsCapsuleSizeSettings> RuntimeCapsuleSizeSettings;
 	
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = Movement)
 	TObjectPtr<UAlsCameraComponent> Camera;
-	
-	UPROPERTY(EditDefaultsOnly, Category = "GameplayTags")
-	FGameplayTagBlueprintPropertyMap GameplayTagBlueprintPropertyMap;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UMotionWarpingComponent* MotionWarpingComponent;
 	
-	TWeakObjectPtr<class UAbilitySystemComponent> AbilitySystemComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UAbilitySystemComponent* AbilitySystemComponent;
+	
 public:
 	// Look at start
 	UPROPERTY(BlueprintReadOnly, Category = "View")
@@ -96,6 +91,8 @@ protected:
 	
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo) override;
 	virtual void ApplyDesiredStance() override;
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 
 	// Fix crouch half height adjust Start
@@ -112,6 +109,7 @@ protected:
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
 
 	// Gameplay Tag For ASC
+	virtual class UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual void NotifyViewModeChanged(const FGameplayTag& PreviousViewMode) override;
 	virtual void NotifyLocomotionModeChanged(const FGameplayTag& PreviousLocomotionMode) override;
 	virtual void NotifyRotationModeChanged(const FGameplayTag& PreviousRotationMode) override;
@@ -123,7 +121,6 @@ protected:
 	virtual bool IsRollingAllowedToStart(const UAnimMontage* Montage) const override;
 	virtual void PostInitializeComponents() override;
 	virtual void RefreshRotationMode() override;
-	virtual class UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual void AddMovementInput(FVector WorldDirection, float ScaleValue = 1.0f, bool bForce = false) override;
 	virtual void OnJumped_Implementation() override;
 	virtual bool RefreshCustomInAirRotation(float DeltaTime) override;
@@ -251,8 +248,8 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Player State Rep")
 	void K2_OnPlayerStateRep();
 	
-	UFUNCTION(Category = "Character Movement: Swimming", BlueprintCallable)
-	void AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAsset);
+	UFUNCTION(BlueprintCallable)
+	void AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAsset, TSubclassOf<UAnimInstance> AnimInstanceClass);
 
 	UFUNCTION(Category = "Character Movement: Walking", BlueprintCallable, NetMulticast, Reliable)
 	void TurnInPlaceImmediately();
@@ -275,7 +272,12 @@ public:
 	void SetGameplayTagInASC(const FGameplayTag& AlsTag, const FGameplayTag& AlsParentTag = FGameplayTag::EmptyTag);
 	void InitGameplayTagInASC();
 	
-	UAlsCapsuleSizeSettings* GetCapsuleSettings() const {return RuntimeCapsuleSizeSettings;}
+	UAlsCapsuleSizeSettings* GetCapsuleSettings() const { return CapsuleSizeSettings; }
+	void InitCapsuleSize();
+
+	UFUNCTION(BlueprintCallable)
+	void SetCapsuleSizeSettings(UAlsCapsuleSizeSettings* InCapsuleSizeSettings);
+	
 	float GetScaledRadius(float UnscaledRadius) const;
 	float GetScaledHaleHeight(float UnscaledHalfHeight) const;
 #pragma endregion

@@ -24,6 +24,11 @@ namespace AlsCharacter
 	constexpr auto MinAimingYawAngleLimit{70.0f};
 }
 
+UAlsAnimationInstance* AAlsCharacter::GetAnimationInstance() const
+{
+	return Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
+}
+
 AAlsCharacter::AAlsCharacter(const FObjectInitializer& ObjectInitializer) : Super{
 	ObjectInitializer.SetDefaultSubobjectClass<UAlsCharacterMovementComponent>(CharacterMovementComponentName)
 }
@@ -138,9 +143,7 @@ void AAlsCharacter::PostInitializeComponents()
 	// Pass current movement settings to the movement component.
 
 	AlsCharacterMovement->SetMovementSettings(MovementSettings);
-
-	AnimationInstance = Cast<UAlsAnimationInstance>(GetMesh()->GetAnimInstance());
-
+	
 	Super::PostInitializeComponents();
 }
 
@@ -148,7 +151,7 @@ void AAlsCharacter::BeginPlay()
 {
 	ALS_ENSURE(IsValid(Settings));
 	ALS_ENSURE(IsValid(MovementSettings));
-	std::ignore = ALS_ENSURE(AnimationInstance.IsValid());
+	std::ignore = ALS_ENSURE(GetAnimationInstance());
 
 	ALS_ENSURE_MESSAGE(!bUseControllerRotationPitch && !bUseControllerRotationYaw && !bUseControllerRotationRoll, // NOLINT(clang-diagnostic-unused-value)
 	                   TEXT("These settings are not allowed and must be turned off!"));
@@ -163,9 +166,9 @@ void AAlsCharacter::BeginPlay()
 		GetCapsuleComponent()->TransformUpdated.AddWeakLambda(
 			this, [this](USceneComponent*, const EUpdateTransformFlags, const ETeleportType TeleportType)
 			{
-				if (TeleportType != ETeleportType::None && AnimationInstance.IsValid())
+				if (TeleportType != ETeleportType::None && GetAnimationInstance())
 				{
-					AnimationInstance->MarkTeleported();
+					GetAnimationInstance()->MarkTeleported();
 				}
 			});
 	}
@@ -222,9 +225,9 @@ void AAlsCharacter::PostNetReceiveLocationAndRotation()
 			FVector::DistSquared(PreviousLocation, NewLocation) > FMath::Square(Settings->TeleportDistanceThreshold);
 	}
 
-	if (bTeleported && AnimationInstance.IsValid())
+	if (bTeleported && GetAnimationInstance())
 	{
-		AnimationInstance->MarkTeleported();
+		GetAnimationInstance()->MarkTeleported();
 	}
 }
 
@@ -267,9 +270,9 @@ void AAlsCharacter::OnRep_ReplicatedBasedMovement()
 			FVector::DistSquared(PreviousLocation, NewLocation) > FMath::Square(Settings->TeleportDistanceThreshold);
 	}
 
-	if (bTeleported && AnimationInstance.IsValid())
+	if (bTeleported && GetAnimationInstance())
 	{
-		AnimationInstance->MarkTeleported();
+		GetAnimationInstance()->MarkTeleported();
 	}
 }
 
@@ -278,7 +281,7 @@ void AAlsCharacter::Tick(const float DeltaTime)
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("AAlsCharacter::Tick"), STAT_AAlsCharacter_Tick, STATGROUP_Als)
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR(__FUNCTION__)
 
-	if (!IsValid(Settings) || !AnimationInstance.IsValid())
+	if (!IsValid(Settings) || !GetAnimationInstance())
 	{
 		Super::Tick(DeltaTime);
 		return;
@@ -405,9 +408,9 @@ void AAlsCharacter::RefreshMeshProperties() const
 		}
 	}
 
-	if (!bMeshIsTicking && AnimationInstance.IsValid())
+	if (!bMeshIsTicking && GetAnimationInstance())
 	{
-		AnimationInstance->MarkPendingUpdate();
+		GetAnimationInstance()->MarkPendingUpdate();
 	}
 
 	if (bAutonomousProxyOnListenServer && LocomotionAction == AlsLocomotionActionTags::Mantling)
@@ -1142,7 +1145,7 @@ void AAlsCharacter::SetLocomotionAction(const FGameplayTag& NewLocomotionAction)
 
 bool AAlsCharacter::IsRootMotionMontagePlaying() const
 {
-	for (const auto MontageInstance : AnimationInstance->MontageInstances)
+	for (const auto MontageInstance : GetAnimationInstance()->MontageInstances)
 	{
 		if (!MontageInstance->IsRootMotionDisabled() && MontageInstance->bPlaying)
 		{
@@ -1182,7 +1185,13 @@ void AAlsCharacter::SetInputDirection(FVector NewInputDirection)
 
 void AAlsCharacter::RefreshInput(const float DeltaTime)
 {
-	if (GetLocalRole() >= ROLE_AutonomousProxy)
+	// If is an ai controller, get acceleration won't be worked. It will calculate velocity instead.
+	if (!IsPlayerControlled())
+	{
+		// Will get safe normal in set input direction.
+		SetInputDirection(GetVelocity());
+	}
+	else if (GetLocalRole() >= ROLE_AutonomousProxy)
 	{
 		SetInputDirection(GetCharacterMovement()->GetCurrentAcceleration() / GetCharacterMovement()->GetMaxAcceleration());
 	}
@@ -1562,9 +1571,9 @@ void AAlsCharacter::MulticastOnJumpedNetworked_Implementation()
 // ReSharper disable once CppMemberFunctionMayBeConst
 void AAlsCharacter::OnJumpedNetworked()
 {
-	if (AnimationInstance.IsValid())
+	if (GetAnimationInstance())
 	{
-		AnimationInstance->Jump();
+		GetAnimationInstance()->Jump();
 	}
 }
 

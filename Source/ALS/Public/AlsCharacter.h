@@ -53,8 +53,11 @@ protected:
 		ReplicatedUsing = "OnReplicated_OverlayMode")
 	FGameplayTag OverlayMode{AlsOverlayModeTags::Default};
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character", Transient, Meta = (ShowInnerProperties))
-	TWeakObjectPtr<UAlsAnimationInstance> AnimationInstance;
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character", Transient, Meta = (ShowInnerProperties))
+	//TWeakObjectPtr<UAlsAnimationInstance> AnimationInstance;
+
+	UFUNCTION(BlueprintPure, Category = "ALS|Character")
+	UAlsAnimationInstance* GetAnimationInstance() const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character", Transient)
 	FGameplayTag LocomotionMode{AlsLocomotionModeTags::Grounded};

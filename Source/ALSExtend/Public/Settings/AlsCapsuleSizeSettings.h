@@ -27,10 +27,7 @@ struct ALSEXTEND_API FAlsCapsuleSizeStateSettings
 	float CapsuleRadius = 30.0f;
 };
 
-/**
- * 
- */
-UCLASS()
+UCLASS(BlueprintType)
 class ALSEXTEND_API UAlsCapsuleSizeSettings : public UDataAsset
 {
 	GENERATED_BODY()
