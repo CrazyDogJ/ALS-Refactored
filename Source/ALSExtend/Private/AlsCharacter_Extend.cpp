@@ -166,32 +166,19 @@ void AAlsCharacter_Extend::OnStartCrouch(float HalfHeightAdjust, float ScaledHal
 
 	RecalculateBaseEyeHeight();
 
-	bool bValid;
-	const auto FoundSettings = GetCapsuleSettings()->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
-	
 	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
-	if (bValid)
+	float DefaultHeight;
+	float DefaultRadius;
+	GetDefaultCapsule(DefaultHeight, DefaultRadius);
+	if (GetMesh() && DefaultChar->GetMesh())
 	{
-		BaseTranslationOffset.Z = FoundSettings.CapsuleHalfHeight * -1.0f;
-
-		if (GetMesh() && DefaultChar->GetMesh())
-		{
-			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-			MeshRelativeLocation.Z = BaseTranslationOffset.Z;
-		}
+		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+		MeshRelativeLocation.Z = -DefaultHeight + HalfHeightAdjust;
+		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 	}
 	else
 	{
-		if (GetMesh() && DefaultChar->GetMesh())
-        {
-        	FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-        	MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z + HalfHeightAdjust;
-        	BaseTranslationOffset.Z = MeshRelativeLocation.Z;
-        }
-        else
-        {
-        	BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z + HalfHeightAdjust;
-        }
+		BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z + HalfHeightAdjust;
 	}
 	
 	K2_OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
@@ -214,35 +201,21 @@ void AAlsCharacter_Extend::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfH
 
 	RecalculateBaseEyeHeight();
 
-	bool bValid;
-	const auto FoundSettings = GetCapsuleSettings()->QueryCapsuleSizeByTag(AlsStanceTags::Standing, bValid);
-
 	const ACharacter* DefaultChar = GetDefault<ACharacter>(GetClass());
-	if (bValid)
+	float DefaultHeight;
+	float DefaultRadius;
+	GetDefaultCapsule(DefaultHeight, DefaultRadius);
+	if (GetMesh() && DefaultChar->GetMesh())
 	{
-		BaseTranslationOffset.Z = FoundSettings.CapsuleHalfHeight * -1.0f;
-		
-		if (GetMesh() && DefaultChar->GetMesh())
-		{
-			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-			MeshRelativeLocation.Z = BaseTranslationOffset.Z;
-		}
+		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+		MeshRelativeLocation.Z = -DefaultHeight;
+		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 	}
 	else
 	{
-		// Default
-		if (GetMesh() && DefaultChar->GetMesh())
-		{
-			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-			MeshRelativeLocation.Z = DefaultChar->GetMesh()->GetRelativeLocation().Z + 10.0f;
-			BaseTranslationOffset.Z = MeshRelativeLocation.Z;
-		}
-		else
-		{
-			BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z;
-		}
+		BaseTranslationOffset.Z = DefaultChar->GetBaseTranslationOffset().Z;
 	}
-	
+
 	K2_OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
 	SetStance(AlsStanceTags::Standing);
@@ -1053,6 +1026,13 @@ void AAlsCharacter_Extend::InitCapsuleSize()
 		{
 			GetCapsuleComponent()->SetCapsuleSize(Found.CapsuleRadius, Found.CapsuleHalfHeight);
 			UpdateMeshRelativeLocation(Found.CapsuleHalfHeight);
+		}
+
+		const auto FoundCrouch = GetCapsuleSettings()->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
+		if (bValid)
+		{
+			// Here the crouched capsule only worked on half height.
+			MovementComponent_Extend->SetCrouchedHalfHeight(FoundCrouch.CapsuleHalfHeight);
 		}
 	}
 }
