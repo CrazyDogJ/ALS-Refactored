@@ -219,8 +219,10 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void ResetClimbDownInfo();
-	
+
+	UFUNCTION(BlueprintCallable)
 	void TryClimbDashing();
+	
 	void StoreClimbDashDirection();
 
 	UFUNCTION(BlueprintPure)

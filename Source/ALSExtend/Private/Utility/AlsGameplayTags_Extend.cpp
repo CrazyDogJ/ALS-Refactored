@@ -17,3 +17,10 @@ namespace AlsLocomotionActionTags
 	UE_DEFINE_GAMEPLAY_TAG(ClimbDownLedge, FName{TEXTVIEW("Als.LocomotionAction.ClimbDownLedge")})
 	UE_DEFINE_GAMEPLAY_TAG(ClimbDownFloor, FName{TEXTVIEW("Als.LocomotionAction.ClimbDownFloor")})
 }
+
+namespace AlsSwimmingStateTags
+{
+	UE_DEFINE_GAMEPLAY_TAG(SwimmingStateParent, FName{TEXTVIEW("Als.SwimmingState")})
+	UE_DEFINE_GAMEPLAY_TAG(Surface, FName{TEXTVIEW("Als.SwimmingState.Surface")})
+	UE_DEFINE_GAMEPLAY_TAG(Underwater, FName{TEXTVIEW("Als.SwimmingState.Underwater")})
+}

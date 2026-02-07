@@ -1756,9 +1756,17 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 	{
 		bJumpingOutOfWater = false;
 	}
+	
+	const bool TempSurface = bIsSwimOnSurface;
 	if (IsSwimming() && GetWaterInfoForSwim().WaterBodyIdx >= 0)
 	{
 		bIsSwimOnSurface = GetImmerseDepth() <= GetMovementSettingsExtendSafe()->SwimmingSettings.SwimOnSurfaceDepth;
+		// Update swimming state.
+		if (bIsSwimOnSurface != TempSurface)
+		{
+			const FGameplayTag SwimmingStateTag = bIsSwimOnSurface ? AlsSwimmingStateTags::Surface : AlsSwimmingStateTags::Underwater;
+			Cast<AAlsCharacter_Extend>(GetOwner())->SetGameplayTagInASC(SwimmingStateTag);
+		}
 	}
 	else
 	{

@@ -123,9 +123,6 @@ struct ALSEXTEND_API FAlsClimbingSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float ClimbUpLedgeEyeHeight = 20.0f;
 
-	//UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0", ClampMax = "80.0"), BlueprintReadOnly)
-	//float ClimbingCollisionShrinkAmount = 30.0f;
-
 	UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0"), BlueprintReadOnly)
 	float SlopeSpeedMultiplier = 80.0f;
 	

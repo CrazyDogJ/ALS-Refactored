@@ -39,44 +39,13 @@ void AAlsCharacter_Extend::CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInf
 	Super::CalcCamera(DeltaTime, ViewInfo);
 }
 
-void AAlsCharacter_Extend::ApplyDesiredStance()
-{
-	if (!LocomotionAction.IsValid())
-	{
-		if (LocomotionMode == AlsLocomotionModeTags::Grounded)
-		{
-			if (DesiredStance == AlsStanceTags::Standing)
-			{
-				UnCrouch();
-			}
-			else if (DesiredStance == AlsStanceTags::Crouching)
-			{
-				Crouch();
-				if (Gait == AlsGaitTags::Sprinting && IsAllowSliding())
-				{
-					SetGait(AlsGaitTags::Walking);
-					MovementComponent_Extend->SetMovementMode(MOVE_Custom, CMOVE_Slide);
-				}
-			}
-		}
-		else if (LocomotionMode == AlsLocomotionModeTags::InAir)
-		{
-			UnCrouch();
-		}
-	}
-	else if (LocomotionAction == AlsLocomotionActionTags::Rolling && Settings->Rolling.bCrouchOnStart)
-	{
-		Crouch();
-	}
-}
-
 void AAlsCharacter_Extend::BeginPlay()
 {
 	Super::BeginPlay();
 	
 	// Runtime settings
-	RuntimeMovementSettings = DuplicateObject(MovementSettings, this);
-	MovementComponent_Extend->MovementSettings = RuntimeMovementSettings;
+	// RuntimeMovementSettings = DuplicateObject(MovementSettings, this);
+	// MovementComponent_Extend->MovementSettings = RuntimeMovementSettings;
 
 	RuntimeMovementSettings_Extend = DuplicateObject(MovementSettings_Extend, this);
 	MovementComponent_Extend->MovementSettings_Extend = RuntimeMovementSettings_Extend;
@@ -85,8 +54,8 @@ void AAlsCharacter_Extend::BeginPlay()
 void AAlsCharacter_Extend::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	// Runtime settings
-	RuntimeMovementSettings = nullptr;
-	MovementComponent_Extend->MovementSettings = nullptr;
+	// RuntimeMovementSettings = nullptr;
+	// MovementComponent_Extend->MovementSettings = nullptr;
 
 	RuntimeMovementSettings_Extend = nullptr;
 	MovementComponent_Extend->MovementSettings_Extend = nullptr;
@@ -348,6 +317,11 @@ void AAlsCharacter_Extend::NotifyLocomotionModeChanged(const FGameplayTag& Previ
 	Super::NotifyLocomotionModeChanged(PreviousLocomotionMode);
 
 	SetGameplayTagInASC(LocomotionMode);
+	// Remove swimming state tag.
+	if (LocomotionMode != AlsLocomotionModeTags::Swimming)
+	{
+		SetGameplayTagInASC(FGameplayTag::EmptyTag, AlsSwimmingStateTags::SwimmingStateParent);
+	}
 }
 
 void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction)
@@ -394,11 +368,6 @@ void AAlsCharacter_Extend::NotifyGaitChanged(const FGameplayTag& PreviousGait)
 	Super::NotifyGaitChanged(PreviousGait);
 
 	SetGameplayTagInASC(Gait);
-	
-	if (Gait == AlsGaitTags::Sprinting)
-	{
-		MovementComponent_Extend->TryClimbDashing();
-	}
 }
 
 bool AAlsCharacter_Extend::IsRagdollingAllowedToStop() const
@@ -601,6 +570,11 @@ void AAlsCharacter_Extend::SetCurrentOverlayClass(FName InTag, TSubclassOf<UAnim
 	{
 		GetMesh()->LinkAnimGraphByTag(InTag, AnimInstance_Extend->DefaultOverlayAnimBP);
 	}
+}
+
+void AAlsCharacter_Extend::EnterSlide() const
+{
+	MovementComponent_Extend->SetMovementMode(MOVE_Custom, CMOVE_Slide);
 }
 
 bool AAlsCharacter_Extend::IsAllowRolling_Implementation() const
@@ -1121,12 +1095,40 @@ bool AAlsCharacter_Extend::RefreshCustomInAirRotation(float DeltaTime)
 
 void AAlsCharacter_Extend::RefreshGait()
 {
+	// Custom gait refresh logic for free climbing (ASC usage)
 	if (LocomotionMode == AlsLocomotionModeTags::FreeClimbing)
 	{
-		SetGait(GetDesiredGait());
+		if (MovementComponent_Extend->IsClimbDashing())
+		{
+			SetGait(AlsGaitTags::Sprinting);
+			return;
+		}
+		
+		if (GetCharacterMovement()->GetCurrentAcceleration().Length() > 0.1f)
+		{
+			SetGait(AlsGaitTags::Running);
+		}
+		else
+		{
+			SetGait(AlsGaitTags::Walking);
+		}
 		return;
 	}
-	
+
+	// Custom refresh logic for gliding (ASC usage)
+	if (LocomotionMode == AlsLocomotionModeTags::Gliding)
+	{
+		if (GetCharacterMovement()->GetCurrentAcceleration().Length() > 0.1f)
+		{
+			SetGait(AlsGaitTags::Running);
+		}
+		else
+		{
+			SetGait(AlsGaitTags::Walking);
+		}
+	}
+
+	// Normal gait updating.
 	if (LocomotionMode != AlsLocomotionModeTags::Grounded &&
 		LocomotionMode != AlsLocomotionModeTags::Flying &&
 		LocomotionMode != AlsLocomotionModeTags::Swimming)

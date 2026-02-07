@@ -90,7 +90,6 @@ protected:
 	virtual void OnConstruction(const FTransform& Transform) override;
 	
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo) override;
-	virtual void ApplyDesiredStance() override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -167,6 +166,10 @@ public:
 	*/
 	UFUNCTION(BlueprintCallable)
 	void SetCurrentOverlayClass(FName InTag = "Overlay", TSubclassOf<UAnimInstance> InAnimClass = nullptr);
+
+	// Manually enter slide.
+	UFUNCTION(BlueprintCallable)
+	void EnterSlide() const;
 	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Enter Slide")
 	void K2_EnterSlide();
