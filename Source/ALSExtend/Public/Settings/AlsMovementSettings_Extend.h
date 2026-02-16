@@ -79,6 +79,10 @@ struct ALSEXTEND_API FAlsClimbingSettings
 	UPROPERTY(EditDefaultsOnly)
 	UCurveFloat* ClimbDashCurve;
 
+	//Climb trace channel
+	UPROPERTY(EditDefaultsOnly)
+	TEnumAsByte<ECollisionChannel> ClimbTraceChannel = ECC_Pawn;
+	
 	//Enter climb duration.
 	UPROPERTY(EditDefaultsOnly)
 	float TryEnterClimbDuration = 0.4f;

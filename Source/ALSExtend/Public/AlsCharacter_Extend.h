@@ -215,10 +215,20 @@ public:
 	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Exit Climb Dash")
 	void K2_ExitClimbDash();
+
+	// Climb to walk montage
+	virtual void NativeClimbToWalk();
+	
+	UFUNCTION(NetMulticast, Reliable)
+	void ClimbToWalkGetUp();
 	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Exit Climb and Enter Walk")
 	void K2_ClimbToWalk();
 
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	UAnimMontage* SelectClimbToWalkMontage();
+	// Climb to walk montage
+	
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastJumpOutOfWater();
 	

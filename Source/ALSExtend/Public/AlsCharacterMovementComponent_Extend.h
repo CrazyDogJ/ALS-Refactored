@@ -86,7 +86,7 @@ public:
 	bool bIsSwimOnSurface = false;
 
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Character Movement: Swimming")
-	uint8 bWantsToJumpOutOfWater : 1;
+	uint8 bWantsToJumpOutOfWater = 1;
 
 	UFUNCTION(BlueprintCallable)
 	UWaterBodyComponent* GetCurrentWaterBodyComponent() const;
@@ -101,7 +101,7 @@ public:
 private:
 	FVector ClimbDashDirection;
 	
-	float CurrentClimbDashTime;
+	float CurrentClimbDashTime = 0;
 
 	//Enter climb time.
 	float TryEnterClimbTime = 0.0f;
@@ -127,17 +127,29 @@ private:
 	void SetCharacterBase(UPrimitiveComponent* BaseComponent);
 
 	void PhysClimbing(float deltaTime, int32 Iterations);
+
+	static float AngleToZ(const float InAngle)
+	{
+		return FMath::Cos(FMath::DegreesToRadians(InAngle));
+	}
+
+	static float ZToAngle(const float InZ)
+	{
+		return FMath::RadiansToDegrees(FMath::Acos(InZ));
+	}
 	
 	FQuat GetClimbingRotation(float deltaTime) const;
 	void SingleSweep(FHitResult& Hit, const FVector& Start, const FVector& End, const FCollisionShape Shape) const;
-	void SweepAndStoreWallHits(TArray<FHitResult>& Results, FHitResult& Hits_Velocity, bool& bAllSweepCollided, const FVector& CompLocation, const
-	                           FVector& CompForwardVector) const;
-	bool EyeHeightTrace(const float TraceDistance, const FVector& CompLoc, const FVector& CompUp, const FVector& CompForward, const bool
-	                    bUseDefaultCapsule) const;
-	bool IsFacingSurface(const float Steepness, const FVector& CompLoc, const FVector& CompUp, const FVector& CompForward, const bool
-	                     bUseDefaultCapsule) const;
-	void ComputeSurfaceInfo(TArray<FHitResult>& WallHits, FVector& Position, FVector& Normal, const FVector& VelocityHitNormal, const FVector&
-	                        Start) const;
+	void SweepAndStoreWallHits(TArray<FHitResult>& Results, FHitResult& Hits_Velocity, bool& bAllSweepCollided, const FVector& CompLocation, const FVector& CompForwardVector) const;
+	
+	// Helper functions of free climbing.
+	float GetAngleBaseDistance(const float CompRadius, const float HeightOffset) const;
+	FVector GetEyeLocation(const FVector& CompLoc, const FVector& CompUp, const float Offset) const;
+	bool EyeHeightTrace(const float TraceDistance, const FVector& CompLoc, const FVector& CompUp, const FVector& CompForward) const;
+	bool IsFacingSurface(const FVector& CompLoc, const FVector& CompUp, const FVector& CompForward, const float CompHalfHeight, const float CompRadius) const;
+	// Helper functions of free climbing.
+	
+	void ComputeSurfaceInfo(TArray<FHitResult>& WallHits, FVector& Position, FVector& Normal, const FVector& VelocityHitNormal, const FVector& Start) const;
 	void ComputeClimbingVelocity(float deltaTime);
 	void AlignClimbDashDirection();
 	bool ShouldStopClimbing();
@@ -146,17 +158,19 @@ private:
 	void MoveAlongClimbingSurface(float deltaTime);
 	void SnapToClimbingSurface(float deltaTime) const;
 	bool ClimbDownToFloor() const;
-	//void FindFloor_Custom(const FVector& CapsuleLocation, FFindFloorResult& OutFloorResult, bool bCanUseCachedLocation, const FHitResult* DownwardSweepResult) const;
-	//void ComputeFloorDist_Custom(const FVector& CapsuleLocation, float LineDistance, float SweepDistance, FFindFloorResult& OutFloorResult, float SweepRadius, const FHitResult* DownwardSweepResult) const;
 	void UpdateClimbDashState(float deltaTime);
 	void StopClimbDashing();
 	UAlsMovementSettings_Extend* GetMovementSettingsExtendSafe() const;
 	
 public:
+	
+#if WITH_EDITORONLY_DATA
+	// Should draw climb debug shapes.
 	UPROPERTY(Category = "Character Movement: Climbing", EditAnywhere, BlueprintReadWrite)
-	bool DebugDrawSwitch;
-
-	UPROPERTY(Replicated,BlueprintReadOnly)
+	bool DebugDrawSwitch = false;
+#endif
+	
+	UPROPERTY(Replicated, BlueprintReadOnly)
 	bool bIsClimbDashing = false;
 	
 	//碰撞检测结果
@@ -194,7 +208,7 @@ public:
 
 	//Swing start
 	UPROPERTY(BlueprintReadOnly, Replicated)
-	ASwingRopeActor* SwingActor;
+	ASwingRopeActor* SwingActor = nullptr;
 
 	UPROPERTY(BlueprintReadOnly, Replicated)
 	float OnRopeDistance = 0.0f;

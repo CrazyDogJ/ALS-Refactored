@@ -557,7 +557,7 @@ void AAlsCharacter_Extend::SetLookCompAndSocket(UPrimitiveComponent* InComp, con
 FVector AAlsCharacter_Extend::GetCapsuleBottom()
 {
 	const double CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	return GetActorLocation() + GetGravityDirection() * CapsuleHalfHeight;
+	return GetActorLocation() + GetCapsuleComponent()->GetUpVector() * -CapsuleHalfHeight;
 }
 
 void AAlsCharacter_Extend::SetCurrentOverlayClass(FName InTag, TSubclassOf<UAnimInstance> InAnimClass)
@@ -625,6 +625,26 @@ bool AAlsCharacter_Extend::IsAllowSliding_Implementation() const
 void AAlsCharacter_Extend::MulticastJumpOutOfWater_Implementation()
 {
 	K2_JumpOutOfWater();
+}
+
+UAnimMontage* AAlsCharacter_Extend::SelectClimbToWalkMontage_Implementation()
+{
+	return Settings->Ragdolling.GetUpFrontMontage;
+}
+
+void AAlsCharacter_Extend::ClimbToWalkGetUp_Implementation()
+{
+	if (GetMesh()->GetAnimInstance()->Montage_Play(SelectClimbToWalkMontage()) > 0.0f)
+	{
+		AlsCharacterMovement->SetInputBlocked(true);
+		SetLocomotionAction(AlsLocomotionActionTags::GettingUp);
+	}
+}
+
+void AAlsCharacter_Extend::NativeClimbToWalk()
+{
+	ClimbToWalkGetUp();
+	K2_ClimbToWalk();
 }
 
 void AAlsCharacter_Extend::SwimUp()

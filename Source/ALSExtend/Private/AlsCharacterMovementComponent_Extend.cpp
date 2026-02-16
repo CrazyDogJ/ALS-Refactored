@@ -426,11 +426,7 @@ void UAlsCharacterMovementComponent_Extend::GetUnscaledCrouchHalfHeight(float& O
 UAlsCharacterMovementComponent_Extend::UAlsCharacterMovementComponent_Extend()
 {
 	bWantsToJumpOutOfWater = false,
-	bWantsToClimb = false,
-	DebugDrawSwitch = false,
-	
-	CurrentClimbDashTime = 0,
-	SwingActor = nullptr;
+	bWantsToClimb = false;
 
 	SetIsReplicatedByDefault(true);
 }
@@ -703,7 +699,8 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 	//SetBase
 	FHitResult BaseHit;
 	const FCollisionShape CollisionSphere = FCollisionShape::MakeSphere(6);
-	GetWorld()->SweepSingleByChannel(BaseHit, CurrentClimbingPosition, CurrentClimbingPosition, FQuat::Identity, ECC_GameTraceChannel1, CollisionSphere, ClimbQueryParams);
+	const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
+	GetWorld()->SweepSingleByChannel(BaseHit, CurrentClimbingPosition, CurrentClimbingPosition, FQuat::Identity, TraceChannel, CollisionSphere, ClimbQueryParams);
 	if (BaseHit.bBlockingHit)
 	{
 		SetBase(BaseHit.Component.Get(), BaseHit.BoneName);
@@ -712,6 +709,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 	const bool bClimbDownFloor = ClimbDownToFloor();
 	if (ShouldStopClimbing() || bClimbDownFloor)
 	{
+#if WITH_EDITOR
 		if (DebugDrawSwitch)
 		{
 			if (ShouldStopClimbing())
@@ -723,6 +721,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 				GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Climb Down to Floor"));
 			}
 		}
+#endif
 		StopClimbing(deltaTime, Iterations, bClimbDownFloor);
 		return;
 	}
@@ -735,7 +734,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 
 	//Move on ledge
 	const float UpSpeed = FVector::DotProduct(Velocity, UpdatedComponent->GetUpVector());
-	const bool bIsMovingUp = UpSpeed >= 1.0f && Acceleration.Z > 1.0f;
+	const bool bIsMovingUp = UpSpeed >= 1.0f && GetGravitySpaceZ(Acceleration) > 1.0f;
 	
 	if (bIsMovingUp && HasReachedEdge() && !HasAnimRootMotion())
 	{
@@ -743,7 +742,9 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 		{
 			if (Character->StartMantlingFreeClimb())
 			{
+#if WITH_EDITOR
 				if (DebugDrawSwitch) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Try mantle"));
+#endif
 				StopClimbing(deltaTime, Iterations, false);
 			}
 		}
@@ -760,7 +761,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing()
 {
 	if (GetWaterInfoForSwim().WaterBodyIdx >= 0 &&
-		Velocity.Z < 0 &&
+		GetGravitySpaceZ(Velocity) < 0 &&
 		!bSwimToClimb)
 	{
 		return true;
@@ -769,7 +770,7 @@ bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing()
 	TArray<float> HitsVerticalDegrees;
 	for (auto& Hit : CurrentWallHits)
 	{
-		const auto Dot = FVector::DotProduct(Hit.ImpactNormal, FVector(0,0,-1));
+		const auto Dot = FVector::DotProduct(Hit.ImpactNormal, GetGravityDirection());
 		HitsVerticalDegrees.Add(FMath::RadiansToDegrees(FMath::Acos(Dot)));
 	}
 
@@ -809,10 +810,11 @@ bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing()
 	{
 		if (bWalkable)
 		{
-			SetInputBlocked(true);
-			Cast<AAlsCharacter_Extend>(CharacterOwner)->K2_ClimbToWalk();
+			Cast<AAlsCharacter_Extend>(CharacterOwner)->NativeClimbToWalk();
 		}
+#if WITH_EDITOR
 		if (DebugDrawSwitch) DrawDebugLine(GetWorld(), CurrentClimbingPosition, CurrentClimbingPosition + CurrentClimbingNormal * 50, FColor::Red, true, 5);
+#endif
 		return true;
 	}
 	
@@ -824,7 +826,7 @@ bool UAlsCharacterMovementComponent_Extend::HasReachedEdge() const
 	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
 	const float TraceDistance = Capsule->GetUnscaledCapsuleRadius() * 2.5f;
 
-	return !EyeHeightTrace(TraceDistance, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector(), false);
+	return !EyeHeightTrace(TraceDistance, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector());
 }
 
 void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 Iterations, bool bShouldClimbDownFloor)
@@ -874,14 +876,33 @@ void UAlsCharacterMovementComponent_Extend::SnapToClimbingSurface(float deltaTim
 
 bool UAlsCharacterMovementComponent_Extend::ClimbDownToFloor() const
 {
-	if (Velocity.Z < 0 && Acceleration.Z < 0)
+	if (GetGravitySpaceZ(Velocity) < 0 && GetGravitySpaceZ(Acceleration) < 0)
 	{
 		FFindFloorResult FloorResult;
 		// TODO : Fix climbing down floor teleport visual bug. maybe we can use root motion montage to lerp to the ground.
-		const FVector FindFloorLocation = UpdatedComponent->GetComponentLocation();
-
+		const float ForwardDot = GetGravitySpaceZ(UpdatedComponent->GetForwardVector());
+		const bool FacingDown = ForwardDot < 0;
+		float HalfHeight;
+		float Radius;
+		GetDefaultScaledCapsule(HalfHeight, Radius);
+		const FVector CapsuleUp = UpdatedComponent->GetUpVector();
+		const FVector CapsuleLoc = UpdatedComponent->GetComponentLocation();
+		const FVector GravityFloor = ProjectToGravityFloor(CapsuleUp * HalfHeight * (FacingDown ? -1.0f : 1.0f));
+		const FVector FindFloorLocation = CapsuleLoc + GravityFloor;
+		
 		// First simple check
 		FindFloor(FindFloorLocation, FloorResult, false);
+#if WITH_EDITOR
+		if (DebugDrawSwitch)
+		{
+			if (FloorResult.bBlockingHit)
+			{
+				const auto Impact = FloorResult.HitResult.ImpactPoint;
+				const auto Normal = FloorResult.HitResult.ImpactNormal;
+				DrawDebugLine(GetWorld(), Impact, Impact + Normal * 100.0f, FColor::Yellow, false, 0);
+			}
+		}
+#endif
 		if (IsValidLandingSpot(FindFloorLocation, FloorResult.HitResult) && FloorResult.IsWalkableFloor())
 		{
 			// Enough space check
@@ -890,14 +911,17 @@ bool UAlsCharacterMovementComponent_Extend::ClimbDownToFloor() const
 			GetDefaultScaledCapsule(ScaledStandHalfHeight, ScaledStandRadius);
 			
 			FHitResult EnoughSpaceCheckHitResult;
-			FVector End = FindFloorLocation - FVector(0,0,ScaledStandHalfHeight);
+			FVector End = FindFloorLocation + GetGravityDirection() * ScaledStandHalfHeight;
 			FCollisionQueryParams Params;
 			Params.AddIgnoredActor(GetCharacterOwner());
 			GetWorld()->SweepSingleByChannel(EnoughSpaceCheckHitResult, FindFloorLocation,
 			                                 End, FQuat::Identity, ECC_Visibility,
 			                                 FCollisionShape::MakeSphere(ScaledStandRadius), Params);
 
-			if (IsWalkable(EnoughSpaceCheckHitResult))
+			// Ignore when still can climb.
+			const auto StartClimbDegrees = GetMovementSettingsExtendSafe()->ClimbingSettings.MinVerticalDegreesToStartClimbing;
+			const auto StartClimbCos = AngleToZ(StartClimbDegrees);
+			if (IsWalkable(EnoughSpaceCheckHitResult) && EnoughSpaceCheckHitResult.ImpactNormal.Z < StartClimbCos)
 			{
 				return true;
 			}
@@ -963,8 +987,12 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 {
 	bInCanClimbDown = false;
 
-	//0.Check stand still;
-	if (!Acceleration.IsNearlyZero() || !Velocity.IsNearlyZero() || !IsMovingOnGround() || CharacterOwner->IsPlayingRootMotion())
+	//0.Check stand still, and not crouching(crouch will trigger some issue.)
+	if (!Acceleration.IsNearlyZero() ||
+		!Velocity.IsNearlyZero() ||
+		!IsMovingOnGround() ||
+		CharacterOwner->IsPlayingRootMotion() ||
+		IsCrouching())
 	{
 		return;
 	}
@@ -974,31 +1002,53 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	float DefaultRadius;
 	GetDefaultScaledCapsule(DefaultHalfHeight, DefaultRadius);
 	const FVector CompLoc = UpdatedComponent->GetComponentLocation();
-	const FVector CompBottomLoc = CompLoc - (FVector::UpVector * CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	const FVector CompBottomLoc = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetCapsuleBottom();
 	const FVector CompForward = UpdatedComponent->GetForwardVector();
 
-	//2.Check forward floor standable(and forward not wall);
-	const FVector FindFloorLoc = CompLoc + CompForward * DefaultRadius * 2.5;
-	FFindFloorResult FloorResult;
-	FindFloor(FindFloorLoc, FloorResult, false);
+	//2.Check forward wall.
+	const FVector WallCheckLoc = CompLoc + CompForward * DefaultRadius * 2.5;
+	// FFindFloorResult FloorResult;
+	// FindFloor(FindFloorLoc, FloorResult, false);
 	FHitResult ForwardWallResult;
-	GetWorld()->SweepSingleByChannel(ForwardWallResult, CompLoc, FindFloorLoc, FQuat::Identity, ECC_Visibility,
+	GetWorld()->SweepSingleByChannel(ForwardWallResult, CompLoc, WallCheckLoc, FQuat::Identity, ECC_Visibility,
 									 FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
-	if (FloorResult.IsWalkableFloor() || ForwardWallResult.bBlockingHit)
+#if WITH_EDITOR
+	if (DebugDrawSwitch)
+	{
+		// Walkable floor check.
+		// if (FloorResult.bBlockingHit)
+		// {
+		// 	const auto ImpactPoint = FloorResult.HitResult.ImpactPoint;
+		// 	const auto ImpactNormal = FloorResult.HitResult.ImpactNormal;
+		// 	const auto Walkable = FloorResult.IsWalkableFloor();
+		// 	DrawDebugPoint(GetWorld(), ImpactPoint, 4, Walkable ? FColor::Green : FColor::Red, false, 0, 0);
+		// 	DrawDebugLine(GetWorld(), ImpactPoint, ImpactPoint + ImpactNormal * 100.0f, Walkable ? FColor::Green : FColor::Red, false, 0, 0);
+		// }
+
+		// Wall check.
+		UAlsDebugUtility::DrawSweepSphere(this, CompLoc, WallCheckLoc, DefaultRadius, FColor::Red);
+	}
+#endif
+	if (ForwardWallResult.bBlockingHit
+		// || FloorResult.IsWalkableFloor()
+		)
 	{
 		return;
 	}
 	
 	//3.Find ledge wall;
+	const float AngleBaseDistance = GetAngleBaseDistance(DefaultRadius, 2 * DefaultHalfHeight);
 	FHitResult LineWallHit;
-	const FVector LineWallStart = CompBottomLoc + (CompForward *
-		DefaultRadius * 3) - FVector(0, 0, DefaultHalfHeight * 1.25f);
-	const FVector LineWallEnd = CompBottomLoc - FVector(0, 0, DefaultHalfHeight * 1.25f) - (CompForward * DefaultRadius * 2);
-	GetWorld()->LineTraceSingleByChannel(LineWallHit, LineWallStart, LineWallEnd, ECollisionChannel::ECC_GameTraceChannel1, ClimbQueryParams);
+	const FVector LineWallStart = CompBottomLoc + CompForward * AngleBaseDistance + GetGravityDirection() * DefaultHalfHeight * 2;
+	const FVector LineWallEnd = CompBottomLoc + GetGravityDirection() * DefaultHalfHeight * 2 - CompForward * AngleBaseDistance;
+	const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
+	GetWorld()->LineTraceSingleByChannel(LineWallHit, LineWallStart, LineWallEnd, TraceChannel, ClimbQueryParams);
+#if WITH_EDITOR
 	if (DebugDrawSwitch)
 	{
 		DrawDebugLine(GetWorld(), LineWallStart, LineWallEnd, FColor::Blue, false, 0, 0, 1);
 	}
+#endif
 	if (!LineWallHit.IsValidBlockingHit())
 	{
 		return;
@@ -1011,66 +1061,48 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	FHitResult WaterCheckHit;
 	FCollisionQueryParams WaterCheckHitQueryParams;
 	WaterCheckHitQueryParams.AddIgnoredActor(GetOwner());
-	GetWorld()->LineTraceSingleByChannel(WaterCheckHit, CheckStartClimbLoc, CheckStartClimbLoc - FVector(0,0,1), ECC_WorldStatic, WaterCheckHitQueryParams);
+	GetWorld()->LineTraceSingleByChannel(WaterCheckHit, CheckStartClimbLoc, CheckStartClimbLoc + GetGravityDirection(), ECC_WorldStatic, WaterCheckHitQueryParams);
 	if (Cast<AWaterBody>(WaterCheckHit.GetActor()))
 	{
 		return;
 	}
-	//check start
+	// Check predict location can climb.
 	TArray<FHitResult> InClimbWallHits;
 	FHitResult InVelocityWallHit;
-	bool bAllCollided;
-	SweepAndStoreWallHits(InClimbWallHits, InVelocityWallHit, bAllCollided, CheckStartClimbLoc, CheckStartClimbNormal);
+	float NoUse;
+	if (!CanStartClimbing(NoUse, InClimbWallHits, InVelocityWallHit, CheckStartClimbLoc, CheckStartClimbNormal))
+	{
+		return;
+	}
+	// Get normal.
 	FVector Position;
 	FVector Normal;
 	ComputeSurfaceInfo(InClimbWallHits, Position, Normal, FVector::Zero(), CheckStartClimbLoc);
-	const FVector HorizontalNormal = Normal.GetSafeNormal2D();
-
-	const float HorizontalForwardDot = FVector::DotProduct(CheckStartClimbNormal, -HorizontalNormal);
-	const float VerticalDot = FVector::DotProduct(Normal, HorizontalNormal);
-
-	const float HorizontalForwardDegrees = FMath::RadiansToDegrees(FMath::Acos(HorizontalForwardDot));
-	const float VerticalDegrees = FMath::RadiansToDegrees(FMath::Acos(VerticalDot));
-
-	const bool bIsCeiling = FMath::IsNearlyZero(VerticalDot);
-
-	if (DebugDrawSwitch)
-	{
-		DrawDebugLine(GetWorld(), Position, Position+(Normal*100), FColor::Red, false, 0, 0, 1);
-	}
-	const bool bCanClimb =
-		IsFacingSurface(VerticalDot, CheckStartClimbLoc, FVector::UpVector, CheckStartClimbNormal, true) &&
-		HorizontalForwardDegrees <= GetMovementSettingsExtendSafe()->ClimbingSettings.MinHorizontalDegreesToStartClimbing && VerticalDegrees <= 90 -
-		GetWalkableFloorAngle() && !bIsCeiling;
-	if (!bCanClimb)
-	{
-		return;
-	}
 
 	//5.Find edge point;
-	FHitResult EdgeHit;
-	const FVector EdgeFindStart = FVector(CheckStartClimbLoc.X, CheckStartClimbLoc.Y, CompBottomLoc.Z);
-	const FVector EdgeFindEnd = EdgeFindStart + CheckStartClimbNormal * DefaultRadius * 2;
-	GetWorld()->SweepSingleByChannel(EdgeHit, EdgeFindStart, EdgeFindEnd, FQuat::Identity, UpdatedComponent->GetCollisionObjectType(),
-	                                 FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
-	if (!EdgeHit.bBlockingHit)
-	{
-		return;
-	}
+	//FHitResult EdgeHit;
+	//const FVector EdgeFindStart = FVector(CheckStartClimbLoc.X, CheckStartClimbLoc.Y, CompBottomLoc.Z);
+	//const FVector EdgeFindEnd = EdgeFindStart + CheckStartClimbNormal * DefaultRadius * 2;
+	//GetWorld()->SweepSingleByChannel(EdgeHit, EdgeFindStart, EdgeFindEnd, FQuat::Identity, UpdatedComponent->GetCollisionObjectType(),
+	//                                 FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
+	//if (!EdgeHit.bBlockingHit)
+	//{
+	//	return;
+	//}
 
 	//6.Check enough space(Forward);
-	const FVector CheckSpace_1 = EdgeHit.ImpactPoint + (DefaultRadius * 2) * LineWallHit.ImpactNormal.GetSafeNormal2D();
-	FHitResult CheckSpaceHit;
-	GetWorld()->SweepSingleByChannel(CheckSpaceHit, CheckSpace_1, CheckSpace_1 + FVector(0, 0, (DefaultHalfHeight - DefaultRadius) * 2),
-	                                 FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
-	if (CheckSpaceHit.bBlockingHit)
-	{
-		return;
-	}
+	//const FVector CheckSpace_1 = EdgeHit.ImpactPoint + (DefaultRadius * 2) * LineWallHit.ImpactNormal.GetSafeNormal2D();
+	//FHitResult CheckSpaceHit;
+	//GetWorld()->SweepSingleByChannel(CheckSpaceHit, CheckSpace_1, CheckSpace_1 + FVector(0, 0, (DefaultHalfHeight - DefaultRadius) * 2),
+	//                                 FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
+	//if (CheckSpaceHit.bBlockingHit)
+	//{
+	//	return;
+	//}
 	
 	//7.Set params;
-	Forward = CheckSpace_1;
-	Down = CheckStartClimbLoc - FVector(0,0,DefaultHalfHeight);
+	Forward = WallCheckLoc;
+	Down = CheckStartClimbLoc + GetGravityDirection() * DefaultHalfHeight;
 	FaceTo = (-Normal).Rotation();
 	bInCanClimbDown = true;
 }
@@ -1173,7 +1205,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSwing(float deltaTime, int32 Ite
 	
 	int32 Index = SwingActor->SplineComponent->GetNumberOfSplinePoints() - 1;
 	float MaxDistance = SwingActor->SplineComponent->GetDistanceAlongSplineAtSplinePoint(Index);
-	OnRopeDistance = FMath::Clamp(OnRopeDistance - FMath::Sign(Acceleration.Z) * MoveUpDownSpeed * deltaTime, 0.0f, MaxDistance);
+	OnRopeDistance = FMath::Clamp(OnRopeDistance - FMath::Sign(GetGravitySpaceZ(Acceleration)) * MoveUpDownSpeed * deltaTime, 0.0f, MaxDistance);
 	
 	int32 Key = GetNearestSplinePointIndex(SwingActor->SplineComponent, OnRopeDistance);
 	if (SwingActor->CapsuleComponents.IsValidIndex(Key))
@@ -1280,14 +1312,20 @@ bool UAlsCharacterMovementComponent_Extend::CanStartClimbing(float& HorizontalAc
 	const float VerticalDegrees = FMath::RadiansToDegrees(FMath::Acos(VerticalDot));
 
 	const bool bIsCeiling = FMath::IsNearlyZero(VerticalDot);
-
+#if WITH_EDITOR
 	if (DebugDrawSwitch)
 	{
 		DrawDebugLine(GetWorld(), Position, Position+(Normal*100), FColor::Red, false, 0, 0, 1);
 	}
-		
-	if (IsFacingSurface(VerticalDot, CompLoc, FVector::UpVector, CompForwardVec, true) && HorizontalForwardDegrees <=
-		GetMovementSettingsExtendSafe()->ClimbingSettings.MinHorizontalDegreesToStartClimbing && VerticalDegrees <= 90 - GetWalkableFloorAngle() && !bIsCeiling && bAllCollided)
+#endif
+	float DefaultHalfHeight;
+	float DefaultRadius;
+	GetDefaultScaledCapsule(DefaultHalfHeight, DefaultRadius);
+	if (IsFacingSurface(CompLoc, -GetGravityDirection(), CompForwardVec, DefaultHalfHeight, DefaultRadius) &&
+		HorizontalForwardDegrees <= GetMovementSettingsExtendSafe()->ClimbingSettings.MinHorizontalDegreesToStartClimbing &&
+		VerticalDegrees <= 90 - GetWalkableFloorAngle() &&
+		!bIsCeiling &&
+		bAllCollided)
 	{
 		return true;
 	}
@@ -1388,11 +1426,14 @@ FQuat UAlsCharacterMovementComponent_Extend::GetClimbingRotation(float deltaTime
 
 void UAlsCharacterMovementComponent_Extend::SingleSweep(FHitResult& Hit, const FVector& Start, const FVector& End, const FCollisionShape Shape) const
 {
-	GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity, ECC_GameTraceChannel1, Shape, ClimbQueryParams);
+	const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
+	GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity, TraceChannel, Shape, ClimbQueryParams);
+#if WITH_EDITOR
 	if (DebugDrawSwitch)
 	{
 		UAlsDebugUtility::DrawSweepSphere(GetWorld(), Start, End, Shape.GetSphereRadius(), FColor::Red);
 	}
+#endif
 }
 
 void UAlsCharacterMovementComponent_Extend::SweepAndStoreWallHits(TArray<FHitResult>& Results, FHitResult& Hits_Velocity, bool& bAllSweepCollided, const FVector& CompLocation, const FVector& CompForwardVector) const
@@ -1405,18 +1446,21 @@ void UAlsCharacterMovementComponent_Extend::SweepAndStoreWallHits(TArray<FHitRes
 	const FCollisionShape CollisionShape = FCollisionShape::MakeSphere(DefaultRadius);
 
 	const FVector ClampedAccelerationDir = UKismetMathLibrary::GetDirectionUnitVector(
-		FVector::Zero(), FVector(Acceleration.X, Acceleration.Y, FMath::Max(Acceleration.Z, 0)));
+		FVector::Zero(), FVector(Acceleration.X, Acceleration.Y, FMath::Max(GetGravitySpaceZ(Acceleration), 0)));
 
 	const FVector ClampedVelocityDir = UKismetMathLibrary::GetDirectionUnitVector(
-		FVector::Zero(), FVector(Acceleration.X, Acceleration.Y, FMath::Max(Acceleration.Z, 0)));
+		FVector::Zero(), FVector(Acceleration.X, Acceleration.Y, FMath::Max(GetGravitySpaceZ(Acceleration), 0)));
 
 	const FVector Dir = Velocity.IsNearlyZero() ? ClampedAccelerationDir : ClampedVelocityDir;
 	
 	const FVector Start_Forward = CompLocation;
 	const FVector Start_Up = Start_Forward + (DefaultHalfHeight - DefaultRadius) * GetCharacterOwner()->GetActorUpVector();
 	const FVector Start_Down = Start_Forward - (DefaultHalfHeight - DefaultRadius) * GetCharacterOwner()->GetActorUpVector();
-	
-	const FVector End_ForwardAmount = CompForwardVector * DefaultRadius * 2;
+
+	// Fixing sweep can't trace by angle distance when walking.
+	const float PredictDistance = GetAngleBaseDistance(DefaultRadius, 2 * DefaultHalfHeight - DefaultRadius);
+	const FVector End_ForwardAmount = CompForwardVector * PredictDistance;
+	const FVector End_VelocityTrace = IsClimbing() ? Dir * Velocity.Length() : Dir * PredictDistance;
 	
 	FHitResult Hits_Up;
 	FHitResult Hits_Forward;
@@ -1425,7 +1469,7 @@ void UAlsCharacterMovementComponent_Extend::SweepAndStoreWallHits(TArray<FHitRes
 	SingleSweep(Hits_Up, Start_Up, Start_Up + End_ForwardAmount, CollisionShape);
 	SingleSweep(Hits_Forward, Start_Forward, Start_Forward + End_ForwardAmount, CollisionShape);
 	SingleSweep(Hits_Down, Start_Down, Start_Down + End_ForwardAmount, CollisionShape);
-	SingleSweep(Hits_Velocity, Start_Forward, Start_Forward + Dir * DefaultRadius * 2, CollisionShape);
+	SingleSweep(Hits_Velocity, Start_Forward, Start_Forward + End_VelocityTrace, CollisionShape);
 	
 	bAllSweepCollided = Hits_Up.bBlockingHit && Hits_Forward.bBlockingHit;
 	
@@ -1434,29 +1478,50 @@ void UAlsCharacterMovementComponent_Extend::SweepAndStoreWallHits(TArray<FHitRes
 	Results.Add(Hits_Down);
 }
 
-bool UAlsCharacterMovementComponent_Extend::EyeHeightTrace(const float TraceDistance, const FVector& CompLoc, const FVector& CompUp, const FVector& CompForward, const bool bUseDefaultCapsule) const
+float UAlsCharacterMovementComponent_Extend::GetAngleBaseDistance(const float CompRadius, const float HeightOffset) const
+{
+	const auto StartClimbDegrees = GetMovementSettingsExtendSafe()->ClimbingSettings.MinVerticalDegreesToStartClimbing;
+	const auto StartClimbCos = AngleToZ(StartClimbDegrees);
+	const auto StartClimbTan = FMath::Tan(FMath::DegreesToRadians(StartClimbDegrees));
+	const auto PredictFloorDistance = (1 - StartClimbCos) * CompRadius / StartClimbCos;
+	return (HeightOffset + PredictFloorDistance) / StartClimbTan;
+}
+
+FVector UAlsCharacterMovementComponent_Extend::GetEyeLocation(const FVector& CompLoc, const FVector& CompUp, const float Offset) const
+{
+	return CompLoc + CompUp * (CharacterOwner->BaseEyeHeight + Offset);
+}
+
+bool UAlsCharacterMovementComponent_Extend::EyeHeightTrace(const float TraceDistance, const FVector& CompLoc, const FVector& CompUp, const FVector& CompForward) const
 {
 	FHitResult UpperEdgeHit;
 
-	ACharacter* DefaultCharacter = CharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
-	const float Offset = (bUseDefaultCapsule ? DefaultCharacter->BaseEyeHeight : CharacterOwner->BaseEyeHeight) + GetMovementSettingsExtendSafe()->ClimbingSettings.EyeHeightOffset;
-	const FVector Start = CompLoc + (CompUp * Offset);
-	const FVector End = Start + (CompForward * TraceDistance);
-
+	// Calculate eye height offset.
+	const FVector Start = GetEyeLocation(CompLoc, CompUp, GetMovementSettingsExtendSafe()->ClimbingSettings.EyeHeightOffset);
+	const FVector End = Start + CompForward * TraceDistance;
+	const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
+	const bool TraceHit = GetWorld()->LineTraceSingleByChannel(UpperEdgeHit, Start, End, TraceChannel, ClimbQueryParams);
+#if WITH_EDITOR
 	if (DebugDrawSwitch)
 	{
-		DrawDebugLine(GetWorld(), Start, End, FColor::Black, false, 0, 0, 1);
+		// Eye height trace debug draw
+		DrawDebugLine(GetWorld(), Start, End, FColor::Black, false, 0, 1, 1);
+		if (TraceHit)
+		{
+			DrawDebugPoint(GetWorld(), UpperEdgeHit.Location, 8.0f, FColor::Green, false, 0, 1);
+		}
 	}
-	
-	return GetWorld()->LineTraceSingleByChannel(UpperEdgeHit, Start, End, ECC_GameTraceChannel1, ClimbQueryParams);
+#endif
+	return TraceHit;
 }
 
-bool UAlsCharacterMovementComponent_Extend::IsFacingSurface(const float Steepness, const FVector& CompLoc, const FVector& CompUp, const FVector& CompForward, const bool bUseDefaultCapsule) const
+bool UAlsCharacterMovementComponent_Extend::IsFacingSurface(const FVector& CompLoc, const FVector& CompUp, const FVector& CompForward, const float CompHalfHeight, const float CompRadius) const
 {
-	constexpr float BaseLength = 80;
-	const float SteepnessMultiplier = 1 + (1 - Steepness) * 5;
+	// Get climbing degrees
+	const auto PredictDistance = GetAngleBaseDistance(CompRadius, CompHalfHeight + CharacterOwner->BaseEyeHeight);
 
-	return EyeHeightTrace(BaseLength * SteepnessMultiplier, CompLoc, CompUp, CompForward, bUseDefaultCapsule);
+	// Add a radius to make trace further to check current slope
+	return EyeHeightTrace(PredictDistance + CompRadius, CompLoc, CompUp, CompForward);
 }
 
 void UAlsCharacterMovementComponent_Extend::ComputeSurfaceInfo(TArray<FHitResult>& WallHits, FVector& Position, FVector& Normal, const FVector& VelocityHitNormal, const FVector& Start) const
@@ -1477,8 +1542,9 @@ void UAlsCharacterMovementComponent_Extend::ComputeSurfaceInfo(TArray<FHitResult
 		const FVector End = Start + (WallHit.ImpactPoint - Start).GetSafeNormal() * 120;
 
 		FHitResult AssistHit;
+		const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
 		GetWorld()->SweepSingleByChannel(AssistHit, Start, End, FQuat::Identity,
-			ECC_GameTraceChannel1, CollisionSphere, ClimbQueryParams);
+			TraceChannel, CollisionSphere, ClimbQueryParams);
 		
 		Position += AssistHit.Location;
 		Normal += AssistHit.Normal;
@@ -1631,7 +1697,7 @@ float UAlsCharacterMovementComponent_Extend::GetMaxSpeed() const
 	if (IsClimbing())
 	{
 		
-		auto AngleDegree = FVector::DotProduct(CurrentClimbingNormal, FVector(0, 0, 1));
+		auto AngleDegree = FVector::DotProduct(CurrentClimbingNormal, -GetGravityDirection());
 		return GetMovementSettingsExtendSafe()->ClimbingSettings.MaxClimbingSpeed + AngleDegree * GetMovementSettingsExtendSafe()->ClimbingSettings.SlopeSpeedMultiplier;
 	}
 	
@@ -1752,7 +1818,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateFromCompressedFlags(uint8 Flag
 void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
 	// Reset jump out of water & Update Swimming
-	if (Velocity.Z < 0.0f && bJumpingOutOfWater == true)
+	if (GetGravitySpaceZ(Velocity) < 0.0f && bJumpingOutOfWater == true)
 	{
 		bJumpingOutOfWater = false;
 	}
@@ -1787,7 +1853,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 	}
 	if (IsClimbing())
 	{
-		if (bSwimToClimb && (GetWaterInfoForSwim().WaterBodyIdx < 0 || Acceleration.Z < 0))
+		if (bSwimToClimb && (GetWaterInfoForSwim().WaterBodyIdx < 0 || GetGravitySpaceZ(Acceleration) < 0))
 		{
 			bSwimToClimb = false;
 		}
@@ -1803,11 +1869,11 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 		float DefaultStandRadius;
 		float DefaultStandHalfHeight;
 		GetDefaultScaledCapsule(DefaultStandHalfHeight, DefaultStandRadius);
-		if (EyeHeightTrace(DefaultStandRadius * 5, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector(), true))
+		if (IsFacingSurface(UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector(), DefaultStandHalfHeight, DefaultStandRadius))
 		{
 			float AccelHorDegree;
 			bool bCanStartClimbing = CanStartClimbing(AccelHorDegree, CurrentWallHits, VelocityWallHit, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetForwardVector());
-			StartClimbingTimer(AccelHorDegree,DeltaSeconds,bCanStartClimbing);
+			StartClimbingTimer(AccelHorDegree, DeltaSeconds, bCanStartClimbing);
 		}
 	}
 
@@ -1817,7 +1883,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 	CheckClimbDownLedge(ClimbDownNull_A, ClimbDownNull_A, ClimbDownNull_B, bCanClimbDownLedge);
 
 	// Check landing when flying
-	if (IsFlying() && Velocity.Z < 0 && GetMovementSettingsExtendSafe()->FlyingSettings.bShouldCheckLand && !HasAnimRootMotion())
+	if (IsFlying() && GetGravitySpaceZ(Velocity) < 0 && GetMovementSettingsExtendSafe()->FlyingSettings.bShouldCheckLand && !HasAnimRootMotion())
 	{
 		FFindFloorResult FloorResult;
 		FindFloor(UpdatedComponent->GetComponentLocation(), FloorResult, false);
@@ -1981,8 +2047,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 		const FVector OldVelocity = Velocity;
 
 		FVector SlopeForce = CurrentFloor.HitResult.Normal;
-		SlopeForce.Z = 0.f;
-		Velocity += SlopeForce * GetMovementSettingsExtendSafe()->SlidingSettings.SlideGravityForce * deltaTime;
+		Velocity += ProjectToGravityFloor(SlopeForce) * GetMovementSettingsExtendSafe()->SlidingSettings.SlideGravityForce * deltaTime;
 
 		Acceleration = Acceleration.ProjectOnTo(UpdatedComponent->GetRightVector().GetSafeNormal2D()) * GetMovementSettingsExtendSafe()->SlidingSettings.SlideRotationMultiplier;
 
@@ -2057,8 +2122,6 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 			}
 			else
 			{
-				// see if it is OK to jump
-				// @todo collision : only thing that can be problem is that old base has world collision on
 				bool bMustJump = bZeroDelta || (OldBase == nullptr || (!OldBase->IsQueryCollisionEnabled() && MovementBaseUtility::IsDynamicBase(OldBase)));
 				if ((bMustJump || !bCheckedFall) && CheckFall(OldFloor, CurrentFloor.HitResult, Delta, OldLocation, remainingTime, timeTick, Iterations, bMustJump))
 				{
@@ -2096,7 +2159,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 				// The floor check failed because it started in penetration
 				// We do not want to try to move downward because the downward sweep failed, rather we'd like to try to pop out of the floor.
 				FHitResult Hit(CurrentFloor.HitResult);
-				Hit.TraceEnd = Hit.TraceStart + FVector(0.f, 0.f, MAX_FLOOR_DIST);
+				Hit.TraceEnd = Hit.TraceStart - GetGravityDirection() * MAX_FLOOR_DIST;
 				const FVector RequestedAdjustment = GetPenetrationAdjustment(Hit);
 				ResolvePenetration(RequestedAdjustment, Hit, UpdatedComponent->GetComponentQuat());
 				bForceNextFloorCheck = true;
@@ -2127,7 +2190,6 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 			// Make velocity reflect actual move
 			if (!bJustTeleported && !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && timeTick >= MIN_TICK_TIME)
 			{
-				// TODO-RootMotionSource: Allow this to happen during partial override Velocity, but only set allowed axes?
 				Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / timeTick;
 				MaintainHorizontalGroundVelocity();
 			}
@@ -2143,7 +2205,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 
 
 	FHitResult Hit;
-	FQuat NewRotation = FRotationMatrix::MakeFromXZ(Velocity.GetSafeNormal2D(), FVector::UpVector).ToQuat();
+	FQuat NewRotation = FRotationMatrix::MakeFromXZ(Velocity.GetSafeNormal2D(), -GetGravityDirection()).ToQuat();
 	SafeMoveUpdatedComponent(FVector::ZeroVector, NewRotation, false, Hit);
 }
 
@@ -2175,26 +2237,15 @@ void UAlsCharacterMovementComponent_Extend::ServerToggleGlide_Implementation()
 
 void UAlsCharacterMovementComponent_Extend::ToggleGlideImplementation()
 {
-	if (Super::IsFalling())
-	{
-		FHitResult HitResult;
-		FCollisionQueryParams Params;
-		Params.AddIgnoredActor(GetOwner());
-		GetWorld()->LineTraceSingleByChannel(HitResult, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentLocation() - FVector(0,0, GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight), ECC_Pawn, Params);
-		if (Cast<AAlsCharacter_Extend>(CharacterOwner)->IsAllowGliding() && !HitResult.IsValidBlockingHit())
-		{
-			//Check Water
-			FHitResult HitResult_1;
-			GetWorld()->LineTraceSingleByObjectType(HitResult_1, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentLocation() - FVector(0,0, GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight), ECC_WorldStatic, Params);
-			if (!Cast<AWaterBody>(HitResult_1.GetActor()))
-			{
-				SetMovementMode(MOVE_Custom, CMOVE_Gliding);
-			}
-		}
-	}
-	else if (IsGliding())
+	if (IsGliding())
 	{
 		SetMovementMode(MOVE_Falling);
+		return;
+	}
+	
+	if (CheckCanGlide())
+	{
+		SetMovementMode(MOVE_Custom, CMOVE_Gliding);
 	}
 }
 
@@ -2205,12 +2256,14 @@ bool UAlsCharacterMovementComponent_Extend::CheckCanGlide()
 		FHitResult HitResult;
 		FCollisionQueryParams Params;
 		Params.AddIgnoredActor(GetOwner());
-		GetWorld()->LineTraceSingleByChannel(HitResult, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentLocation() - FVector(0,0, GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight), ECC_Pawn, Params);
+		GetWorld()->LineTraceSingleByChannel(HitResult, UpdatedComponent->GetComponentLocation(),
+					UpdatedComponent->GetComponentLocation() + GetGravityDirection() * GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight, ECC_Pawn, Params);
 		if (Cast<AAlsCharacter_Extend>(CharacterOwner)->IsAllowGliding() && !HitResult.IsValidBlockingHit())
 		{
 			//Check Water
 			FHitResult HitResult_1;
-			GetWorld()->LineTraceSingleByObjectType(HitResult_1, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentLocation() - FVector(0,0, GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight), ECC_WorldStatic, Params);
+			GetWorld()->LineTraceSingleByObjectType(HitResult_1, UpdatedComponent->GetComponentLocation(),
+							UpdatedComponent->GetComponentLocation() + GetGravityDirection() * GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight, ECC_WorldStatic, Params);
 			if (!Cast<AWaterBody>(HitResult_1.GetActor()))
 			{
 				return true;
@@ -2294,12 +2347,13 @@ void UAlsCharacterMovementComponent_Extend::PhysGliding(float deltaTime, int32 I
 			}
 		}
 
-		// TODO: Glide changed here
+		// Glide changed here
 		const float ProjectionLength = FVector::DotProduct(Velocity, GetGravityDirection()) / GetGravityDirection().Size();
 		const float DeltaFromGlide = GetMovementSettingsExtendSafe()->GlidingSettings.MaxGlideDownSpeed - ProjectionLength;
 		const FVector Gravity = GetGravityDirection() * DeltaFromGlide * GetMovementSettingsExtendSafe()->GlidingSettings.InterpToTargetGlideSpeed * timeTick;
 		float GravityTime = timeTick;
-
+		// Glide changed here
+		
 		// Apply gravity
 		Velocity = NewFallVelocity(Velocity, Gravity, GravityTime);
 
@@ -2593,12 +2647,13 @@ uint8 FAlsSavedMove_Extend::GetCompressedFlags() const
 
 bool FAlsSavedMove_Extend::CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const
 {
-	if (bSavedWantsToJumpOutOfWater != ((FAlsSavedMove_Extend*)&NewMove)->bSavedWantsToJumpOutOfWater)
+	const auto* NewMoveExtend = static_cast<FAlsSavedMove_Extend*>(NewMove.Get());
+	if (bSavedWantsToJumpOutOfWater != NewMoveExtend->bSavedWantsToJumpOutOfWater)
 	{
 		return false;
 	}
 
-	if (bSavedWantsToClimb != ((FAlsSavedMove_Extend*)&NewMove)->bSavedWantsToClimb)
+	if (bSavedWantsToClimb != NewMoveExtend->bSavedWantsToClimb)
 	{
 		return false;
 	}
