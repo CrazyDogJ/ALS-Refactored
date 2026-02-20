@@ -322,6 +322,14 @@ void AAlsCharacter_Extend::NotifyLocomotionModeChanged(const FGameplayTag& Previ
 	{
 		SetGameplayTagInASC(FGameplayTag::EmptyTag, AlsSwimmingStateTags::SwimmingStateParent);
 	}
+	else
+	{
+		// Auto stand up when swimming. Fixing some bug.
+		if (DesiredStance == AlsStanceTags::Standing)
+		{
+			SetStance(AlsStanceTags::Standing);
+		}
+	}
 }
 
 void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction)
