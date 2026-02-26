@@ -10,6 +10,7 @@
 #include "Utility/AlsGameplayTags.h"
 #include "AlsCharacter.generated.h"
 
+class UAlsFootstepEffectsSettings;
 struct FAlsMantlingParameters;
 struct FAlsMantlingTraceSettings;
 class UAlsCharacterMovementComponent;
@@ -33,6 +34,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings|Als Character")
 	TObjectPtr<UAlsMovementSettings> MovementSettings;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Als Character")
+	TObjectPtr<UAlsFootstepEffectsSettings> FootstepEffectsSettings;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings|Als Character|Desired State",
 		ReplicatedUsing = "OnReplicated_DesiredAiming")
 	uint8 bDesiredAiming : 1 {false};
@@ -53,6 +57,12 @@ protected:
 		ReplicatedUsing = "OnReplicated_OverlayMode")
 	FGameplayTag OverlayMode{AlsOverlayModeTags::Default};
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings|Als Character|Desired State", Replicated)
+	bool AllowTurnInPlace = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings|Als Character|Desired State", Replicated)
+	bool RagdollPlayAnimation = true;
+	
 	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character", Transient, Meta = (ShowInnerProperties))
 	//TWeakObjectPtr<UAlsAnimationInstance> AnimationInstance;
 
@@ -445,6 +455,16 @@ public:
 
 	void CharacterMovement_OnPhysicsRotation(float DeltaTime);
 
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "ALS|Character")
+	void SetAllowTurnInPlace(bool bTurnInPlace)
+	{
+		AllowTurnInPlace = bTurnInPlace;
+	}
+	
+	bool GetAllowTurnInPlace() const
+	{
+		return AllowTurnInPlace;
+	}
 private:
 	void RefreshGroundedRotation(float DeltaTime);
 
@@ -557,6 +577,17 @@ protected:
 
 public:
 	const FAlsRagdollingState& GetRagdollingState() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "ALS|Character")
+	void SetRagdollingPlayAnimation(bool bPlay)
+	{
+		RagdollPlayAnimation = bPlay;
+	}
+	
+	bool GetRagdollingPlayAnimation() const
+	{
+		return RagdollPlayAnimation;
+	}
 
 	bool IsRagdollingAllowedToStart() const;
 

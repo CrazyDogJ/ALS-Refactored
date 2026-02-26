@@ -380,7 +380,18 @@ void AAlsCharacter_Extend::NotifyGaitChanged(const FGameplayTag& PreviousGait)
 
 bool AAlsCharacter_Extend::IsRagdollingAllowedToStop() const
 {
-	return LocomotionAction == AlsLocomotionActionTags::Ragdolling && (RagdollingState.bGrounded || RagdollingState.bInWater);
+	if (LocomotionAction != AlsLocomotionActionTags::Ragdolling)
+	{
+		return false;
+	}
+	
+	if (RagdollingState.bInWater)
+	{
+		return true;
+	}
+	
+	return RagdollingState.bGrounded &&
+		RagdollingState.Velocity.Length() <= (GetSettings() ? GetSettings()->Ragdolling.RagdollGetUpVelocityThreshold : 10.0f);
 }
 
 bool AAlsCharacter_Extend::IsRollingAllowedToStart(const UAnimMontage* Montage) const
@@ -940,14 +951,48 @@ void AAlsCharacter_Extend::AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAs
 void AAlsCharacter_Extend::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                      UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
 {
-	FVector PreCollisionVelocity = HitComponent->GetPhysicsLinearVelocity(Hit.MyBoneName);
-	
-	if (PreCollisionVelocity.Length() >= RagdollHitThreshold && OtherComponent != HitComponent)
+	// Only ragdoll will trigger damage. // Other actor is not self
+	if (LocomotionAction != AlsLocomotionActionTags::Ragdolling || OtherActor == this)
 	{
-		OnRagdollDamaged(HitComponent, OtherActor, OtherComponent, NormalImpulse, Hit);
+		return;
 	}
-}
+	// Get settings
+	const auto SettingsExtend = MovementSettings_Extend;
+	if (!SettingsExtend)
+	{
+		return;
+	}
+	const auto DamageCooldown = SettingsExtend->LandDamageSettings.DamageCooldown;
+	const auto RagdollSafeSpeedThreshold = SettingsExtend->LandDamageSettings.RagdollSafeSpeedThreshold;
+	// 1.Time
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime - LastRagdollDamageTime < DamageCooldown)
+	{
+		return;
+	}
+	// 2.Speed
+	const auto RagdollVelocity = RagdollingState.Velocity;
+	const auto RagdollSpeed = RagdollVelocity.Length();
+	if (RagdollSpeed < RagdollSafeSpeedThreshold)
+	{
+		return;
+	}
 
+	const auto HitNormal = NormalImpulse.GetSafeNormal();
+	const auto VelocityDir = RagdollVelocity.GetSafeNormal();
+	const auto ImpulseFactor = FMath::Abs(VelocityDir.Dot(HitNormal));
+	const float Damage = (RagdollSpeed - RagdollSafeSpeedThreshold) * ImpulseFactor * RagdollDamageScale;
+
+	if (Damage <= 0.0f)
+	{
+		return;
+	}
+	
+	UGameplayStatics::ApplyDamage(this, FMath::Floor(Damage), GetController(), OtherActor, UDamageType::StaticClass());
+
+	LastRagdollDamageTime = CurrentTime;
+} 
+	
 void AAlsCharacter_Extend::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 	UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
 {
@@ -1281,6 +1326,7 @@ void AAlsCharacter_Extend::RefreshVelocityYawAngle()
 	}
 }
 
+/**
 bool AAlsCharacter_Extend::IsMantlingFinalAllowedToStart_Implementation(const FAlsMantlingParameters& Parameters)
 {
 	if (!MovementSettings_Extend)
@@ -1314,6 +1360,7 @@ bool AAlsCharacter_Extend::IsMantlingFinalAllowedToStart_Implementation(const FA
 
 	return Super::IsMantlingFinalAllowedToStart_Implementation(Parameters);
 }
+*/
 
 void AAlsCharacter_Extend::GetDefaultCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius)
 {
@@ -1332,6 +1379,28 @@ void AAlsCharacter_Extend::GetDefaultCapsule(float& OutCapsuleHalfHeight, float&
 
 	// Else we use default class property.
 	Super::GetDefaultCapsule(OutCapsuleHalfHeight, OutCapsuleRadius);
+}
+
+void AAlsCharacter_Extend::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+
+	// Get settings
+	const auto SettingsExtend = MovementSettings_Extend;
+	if (!SettingsExtend)
+	{
+		return;
+	}
+	const auto DamageVelocityThreshold = SettingsExtend->LandDamageSettings.LandDamageVelocityThreshold;
+	const auto RawDamage = (GetVelocity().Length() - DamageVelocityThreshold) * LandDamageScale;
+	const float Damage = FMath::Floor(FMath::Max(RawDamage, 0.0f));
+
+	if (Damage <= 0.0f)
+	{
+		return;
+	}
+	// Apply land damage.
+	UGameplayStatics::ApplyDamage(this, Damage, GetController(), Hit.GetActor(), UDamageType::StaticClass());
 }
 
 void AAlsCharacter_Extend::NotifyViewModeChanged(const FGameplayTag& PreviousViewMode)

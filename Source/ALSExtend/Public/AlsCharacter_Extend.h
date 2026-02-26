@@ -18,7 +18,7 @@ struct FClimbDownParams
 	GENERATED_BODY()
 
 	UPROPERTY(BlueprintReadOnly)
-	UPrimitiveComponent* Component;
+	UPrimitiveComponent* Component = nullptr;
 
 	UPROPERTY(BlueprintReadOnly)
 	FName SocketName;
@@ -81,8 +81,18 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement)
 	UAlsCharacterMovementComponent_Extend* MovementComponent_Extend;
 
-	UPROPERTY(EditDefaultsOnly)
-	float RagdollHitThreshold = 10.0f;
+	// Land Damage
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings|Als Character|Land Damage")
+	float LandDamageScale = 0.05f;
+	// Land Damage end
+	
+	// Ragdoll Damage
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings|Als Character|Land Damage")
+	float RagdollDamageScale = 0.001f;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character")
+	float LastRagdollDamageTime = 0.0f;
+	// Ragdoll Damage end
 #pragma endregion
 
 #pragma region Functions
@@ -126,8 +136,9 @@ protected:
 	virtual void RefreshGait() override;
 	virtual void RefreshLocomotion() override;
 	virtual void RefreshVelocityYawAngle() override;
-	virtual bool IsMantlingFinalAllowedToStart_Implementation(const FAlsMantlingParameters& Parameters) override;
+	// virtual bool IsMantlingFinalAllowedToStart_Implementation(const FAlsMantlingParameters& Parameters) override;
 	virtual void GetDefaultCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius) override;
+	virtual void Landed(const FHitResult& Hit) override;
 	
 	void RefreshSwimmingRotation(float DeltaTime);
 	void RefreshGlidingRotation(float DeltaTime);
@@ -272,9 +283,6 @@ public:
 
 	UFUNCTION()
 	void OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
-	
-	UFUNCTION(BlueprintImplementableEvent)
-	void OnRagdollDamaged(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 
 	bool StartMantlingSwimming();
 

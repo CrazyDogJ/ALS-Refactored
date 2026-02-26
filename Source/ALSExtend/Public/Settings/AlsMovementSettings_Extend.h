@@ -77,7 +77,7 @@ struct ALSEXTEND_API FAlsClimbingSettings
 	
 	//Dash
 	UPROPERTY(EditDefaultsOnly)
-	UCurveFloat* ClimbDashCurve;
+	UCurveFloat* ClimbDashCurve = nullptr;
 
 	//Climb trace channel
 	UPROPERTY(EditDefaultsOnly)
@@ -131,10 +131,10 @@ struct ALSEXTEND_API FAlsClimbingSettings
 	float SlopeSpeedMultiplier = 80.0f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Climb Down")
-	UAnimMontage* ClimbDownMontage;
+	UAnimMontage* ClimbDownMontage = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Climb Down")
-	UAnimMontage* ClimbDownFloorMontage;
+	UAnimMontage* ClimbDownFloorMontage = nullptr;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Climb Down")
 	FName WarpTarget_A = "ClimbDown_A";
@@ -205,6 +205,21 @@ struct ALSEXTEND_API FAlsFlyingSettings
 	bool bShouldCheckLand = true;
 };
 
+USTRUCT(BlueprintType)
+struct ALSEXTEND_API FAlsLandDamageSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Land")
+	float LandDamageVelocityThreshold = 1000.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ragdoll")
+	float RagdollSafeSpeedThreshold = 400.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ragdoll")
+	float DamageCooldown = 0.2f;
+};
+
 /**
  * 
  */
@@ -228,4 +243,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
 	FAlsFlyingSettings FlyingSettings;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
+	FAlsLandDamageSettings LandDamageSettings;
 };

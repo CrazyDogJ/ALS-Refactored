@@ -25,6 +25,9 @@ public:
 	uint8 bLimitInitialRagdollSpeed : 1 {true};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
+	float RagdollGetUpVelocityThreshold = 10.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	TObjectPtr<UAnimMontage> GetUpFrontMontage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")

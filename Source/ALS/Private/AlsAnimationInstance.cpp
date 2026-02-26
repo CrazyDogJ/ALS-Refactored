@@ -1709,7 +1709,13 @@ void UAlsAnimationInstance::RefreshRotateInPlace()
 
 bool UAlsAnimationInstance::IsTurnInPlaceAllowed()
 {
-	return RotationMode == AlsRotationModeTags::ViewDirection && ViewMode != AlsViewModeTags::FirstPerson;
+	bool bAllowTurnInPlace = true;
+	if (Character)
+	{
+		bAllowTurnInPlace = Character->GetAllowTurnInPlace();
+	}
+	
+	return RotationMode == AlsRotationModeTags::ViewDirection && ViewMode != AlsViewModeTags::FirstPerson && bAllowTurnInPlace;
 }
 
 void UAlsAnimationInstance::InitializeTurnInPlace()
@@ -1864,6 +1870,31 @@ void UAlsAnimationInstance::RefreshRagdollingOnGameThread()
 		return;
 	}
 
+	// Ignore animation calculation because joint animation is disabled by character.
+	if (Character)
+	{
+		const bool PlayAnim = Character->GetRagdollingPlayAnimation();
+		if (GetOwningComponent()->bUpdateJointsFromAnimation != PlayAnim)
+		{
+			GetOwningComponent()->bUpdateJointsFromAnimation = PlayAnim;
+			if (PlayAnim)
+			{
+				GetOwningComponent()->UpdateRBJointMotors();
+			}
+			else
+			{
+				GetOwningComponent()->SetAllMotorsAngularPositionDrive(false, false, false);
+				GetOwningComponent()->SetAllMotorsAngularVelocityDrive(false, false, false);
+			}
+		}
+		
+		if (!PlayAnim)
+		{
+			RagdollingState.FlailPlayRate = 0.0f;
+			return;
+		}
+	}
+	
 	// Scale the flail play rate by the root speed. The faster the ragdoll moves, the faster the character will flail.
 
 	static constexpr auto ReferenceSpeed{1000.0f};

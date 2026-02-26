@@ -25,23 +25,23 @@ public:
 	}
 	
 	UPROPERTY(BlueprintReadOnly)
-	float WaterDepth;
+	float WaterDepth = 0.0f;
 	
 	UPROPERTY(BlueprintReadOnly)
-	FVector WaterPlaneLocation;
+	FVector WaterPlaneLocation = FVector::ZeroVector;
 	
 	UPROPERTY(BlueprintReadOnly)
-	FVector WaterPlaneNormal;
+	FVector WaterPlaneNormal = FVector::ZeroVector;
 	
 	UPROPERTY(BlueprintReadOnly)
-	FVector WaterSurfacePosition;
+	FVector WaterSurfacePosition = FVector::ZeroVector;
 	
 	UPROPERTY(BlueprintReadOnly)
-	FVector WaterVelocity;
+	FVector WaterVelocity = FVector::ZeroVector;
 	
 	UPROPERTY(BlueprintReadOnly)
-	int32 WaterBodyIdx;
+	int32 WaterBodyIdx = 0;
 	
 	UPROPERTY(BlueprintReadOnly)
-	float WaterHeight;
+	float WaterHeight = 0.0f;
 };

@@ -921,7 +921,7 @@ bool UAlsCharacterMovementComponent_Extend::ClimbDownToFloor() const
 			// Ignore when still can climb.
 			const auto StartClimbDegrees = GetMovementSettingsExtendSafe()->ClimbingSettings.MinVerticalDegreesToStartClimbing;
 			const auto StartClimbCos = AngleToZ(StartClimbDegrees);
-			if (IsWalkable(EnoughSpaceCheckHitResult) && EnoughSpaceCheckHitResult.ImpactNormal.Z < StartClimbCos)
+			if (IsWalkable(EnoughSpaceCheckHitResult) && EnoughSpaceCheckHitResult.ImpactNormal.Z > StartClimbCos)
 			{
 				return true;
 			}
@@ -1007,8 +1007,8 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 
 	//2.Check forward wall.
 	const FVector WallCheckLoc = CompLoc + CompForward * DefaultRadius * 2.5;
-	// FFindFloorResult FloorResult;
-	// FindFloor(FindFloorLoc, FloorResult, false);
+	FFindFloorResult FloorResult;
+	FindFloor(CompLoc + CompForward * DefaultRadius * 4.0f, FloorResult, false);
 	FHitResult ForwardWallResult;
 	GetWorld()->SweepSingleByChannel(ForwardWallResult, CompLoc, WallCheckLoc, FQuat::Identity, ECC_Visibility,
 									 FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
@@ -1016,21 +1016,21 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	if (DebugDrawSwitch)
 	{
 		// Walkable floor check.
-		// if (FloorResult.bBlockingHit)
-		// {
-		// 	const auto ImpactPoint = FloorResult.HitResult.ImpactPoint;
-		// 	const auto ImpactNormal = FloorResult.HitResult.ImpactNormal;
-		// 	const auto Walkable = FloorResult.IsWalkableFloor();
-		// 	DrawDebugPoint(GetWorld(), ImpactPoint, 4, Walkable ? FColor::Green : FColor::Red, false, 0, 0);
-		// 	DrawDebugLine(GetWorld(), ImpactPoint, ImpactPoint + ImpactNormal * 100.0f, Walkable ? FColor::Green : FColor::Red, false, 0, 0);
-		// }
+		if (FloorResult.bBlockingHit)
+		{
+			const auto ImpactPoint = FloorResult.HitResult.ImpactPoint;
+			const auto ImpactNormal = FloorResult.HitResult.ImpactNormal;
+			const auto Walkable = FloorResult.IsWalkableFloor();
+			DrawDebugPoint(GetWorld(), ImpactPoint, 4, Walkable ? FColor::Green : FColor::Red, false, 0, 0);
+			DrawDebugLine(GetWorld(), ImpactPoint, ImpactPoint + ImpactNormal * 100.0f, Walkable ? FColor::Green : FColor::Red, false, 0, 0);
+		}
 
 		// Wall check.
 		UAlsDebugUtility::DrawSweepSphere(this, CompLoc, WallCheckLoc, DefaultRadius, FColor::Red);
 	}
 #endif
 	if (ForwardWallResult.bBlockingHit
-		// || FloorResult.IsWalkableFloor()
+		|| FloorResult.IsWalkableFloor()
 		)
 	{
 		return;
@@ -1460,7 +1460,7 @@ void UAlsCharacterMovementComponent_Extend::SweepAndStoreWallHits(TArray<FHitRes
 	// Fixing sweep can't trace by angle distance when walking.
 	const float PredictDistance = GetAngleBaseDistance(DefaultRadius, 2 * DefaultHalfHeight - DefaultRadius);
 	const FVector End_ForwardAmount = CompForwardVector * PredictDistance;
-	const FVector End_VelocityTrace = IsClimbing() ? Dir * Velocity.Length() : Dir * PredictDistance;
+	const FVector End_VelocityTrace = IsClimbing() ? Dir * FMath::Clamp(Velocity.Length(), 0.0f, DefaultRadius * 2) : Dir * PredictDistance;
 	
 	FHitResult Hits_Up;
 	FHitResult Hits_Forward;
@@ -1877,10 +1877,13 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 		}
 	}
 
-	// Update can climb down
-	FVector ClimbDownNull_A;
-	FRotator ClimbDownNull_B;
-	CheckClimbDownLedge(ClimbDownNull_A, ClimbDownNull_A, ClimbDownNull_B, bCanClimbDownLedge);
+	// Update can climb down(Only local player.)
+	if (CharacterOwner->IsLocallyControlled() && !CharacterOwner->IsBotControlled())
+	{
+		FVector ClimbDownNull_A;
+		FRotator ClimbDownNull_B;
+		CheckClimbDownLedge(ClimbDownNull_A, ClimbDownNull_A, ClimbDownNull_B, bCanClimbDownLedge);
+	}
 
 	// Check landing when flying
 	if (IsFlying() && GetGravitySpaceZ(Velocity) < 0 && GetMovementSettingsExtendSafe()->FlyingSettings.bShouldCheckLand && !HasAnimRootMotion())

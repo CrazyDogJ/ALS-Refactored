@@ -67,7 +67,7 @@ void AAlsCharacter::StartRolling(const float PlayRate, const float TargetYawAngl
 
 UAlsFootstepEffectsSettings* AAlsCharacter::SelectFootstepSettings_Implementation()
 {
-	return nullptr;
+	return FootstepEffectsSettings;
 }
 
 UAnimMontage* AAlsCharacter::SelectRollMontage_Implementation()
@@ -776,11 +776,17 @@ void AAlsCharacter::StartRagdollingImplementation()
 
 	SetLocomotionAction(AlsLocomotionActionTags::Ragdolling);
 	
-	GetMesh()->bUpdateJointsFromAnimation = true; // Required for the flail animation to work properly.
-
-	if (!GetMesh()->IsRunningParallelEvaluation() && !GetMesh()->GetBoneSpaceTransforms().IsEmpty())
+	// Only play animation should do this.
+	if (RagdollPlayAnimation)
 	{
-		GetMesh()->UpdateRBJointMotors();
+		GetMesh()->bUpdateJointsFromAnimation = true; // Required for the flail animation to work properly.
+		GetMesh()->SetAllMotorsAngularPositionDrive(true, true, false);
+		GetMesh()->SetAllMotorsAngularVelocityDrive(true, true, false);
+		
+		if (!GetMesh()->IsRunningParallelEvaluation() && !GetMesh()->GetBoneSpaceTransforms().IsEmpty())
+		{
+			GetMesh()->UpdateRBJointMotors();
+		}
 	}
 
 	// Stop any active montages.
@@ -804,11 +810,10 @@ void AAlsCharacter::StartRagdollingImplementation()
 
 	GetMesh()->SetCollisionObjectType(ECC_PhysicsBody);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	// Avoid clip through landscape.
+	GetMesh()->BodyInstance.SetUseCCD(true);
+	GetMesh()->SetAllBodiesNotifyRigidBodyCollision(true);
 	GetMesh()->SetSimulatePhysics(true);
-
-	// This is required for the ragdoll to behave properly when any body instance is set to simulated in a physics asset.
-	// TODO Check the need for this in future engine versions.
-	GetMesh()->ResetAllBodiesSimulatePhysics();
 
 	const auto* PelvisBody{GetMesh()->GetBodyInstance(UAlsConstants::PelvisBoneName())};
 	FVector PelvisLocation;
@@ -1133,8 +1138,13 @@ void AAlsCharacter::StopRagdollingImplementation()
 	// Disable mesh physics simulation and enable capsule collision.
 
 	GetMesh()->bUpdateJointsFromAnimation = false;
+	GetMesh()->SetAllMotorsAngularPositionDrive(false, false, false);
+	GetMesh()->SetAllMotorsAngularVelocityDrive(false, false, false);
 
 	GetMesh()->SetSimulatePhysics(false);
+	// Avoid clip through landscape.
+	GetMesh()->BodyInstance.SetUseCCD(false);
+	GetMesh()->SetAllBodiesNotifyRigidBodyCollision(false);
 	auto DefaultMeshCollisionEnabled = GetClass()->GetDefaultObject<AAlsCharacter>()->GetMesh()->GetCollisionEnabled();
 	GetMesh()->SetCollisionEnabled(DefaultMeshCollisionEnabled);
 	auto DefaultMeshObjectType = GetClass()->GetDefaultObject<AAlsCharacter>()->GetMesh()->GetCollisionObjectType();
