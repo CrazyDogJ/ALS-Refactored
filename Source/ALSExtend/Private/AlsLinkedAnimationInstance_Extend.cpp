@@ -39,11 +39,12 @@ void UAlsLinkedAnimationInstance_Extend::NativeInitializeAnimation()
 
 void UAlsLinkedAnimationInstance_Extend::NativeBeginPlay()
 {
+#if WITH_EDITOR
 	ALS_ENSURE_MESSAGE(Parent.IsValid(),
 					   TEXT("%s (%s) should only be used as a linked animation instance within the %s animation blueprint!"),
 					   ALS_GET_TYPE_STRING(UAlsLinkedAnimationInstance_Extend).GetData(), *GetClass()->GetName(),
 					   ALS_GET_TYPE_STRING(UAlsAnimationInstance_Extend).GetData());
-
+#endif
 	Super::NativeBeginPlay();
 }
 

@@ -24,3 +24,9 @@ namespace AlsSwimmingStateTags
 	UE_DEFINE_GAMEPLAY_TAG(Surface, FName{TEXTVIEW("Als.SwimmingState.Surface")})
 	UE_DEFINE_GAMEPLAY_TAG(Underwater, FName{TEXTVIEW("Als.SwimmingState.Underwater")})
 }
+
+namespace AlsDamageTypeTags
+{
+	UE_DEFINE_GAMEPLAY_TAG(Fall, FName{TEXTVIEW("Als.Damage.Fall")})
+	UE_DEFINE_GAMEPLAY_TAG(Ragdoll, FName{TEXTVIEW("Als.Damage.Ragdoll")})
+}

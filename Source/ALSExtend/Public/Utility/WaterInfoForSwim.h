@@ -11,21 +11,14 @@ struct FWaterInfoForSwim
 public:
 	FWaterInfoForSwim(){}
 	
-	FWaterInfoForSwim(float InWaterDepth, const FVector& InWaterPlaneLocation, const FVector& InWaterPlaneNormal,
-	                  const FVector& InWaterSurfacePosition, const FVector& InWaterVelocity, int32 InWaterBodyIdx,
-	                  float InWaterHeight)
+	FWaterInfoForSwim(const FVector& InWaterPlaneLocation, const FVector& InWaterPlaneNormal,
+	                  const FVector& InWaterSurfacePosition, const FVector& InWaterVelocity)
 	{
-		WaterDepth = InWaterDepth;
 		WaterPlaneLocation = InWaterPlaneLocation;
 		WaterPlaneNormal = InWaterPlaneNormal;
 		WaterSurfacePosition = InWaterSurfacePosition;
 		WaterVelocity = InWaterVelocity;
-		WaterBodyIdx = InWaterBodyIdx;
-		WaterHeight = InWaterHeight;
 	}
-	
-	UPROPERTY(BlueprintReadOnly)
-	float WaterDepth = 0.0f;
 	
 	UPROPERTY(BlueprintReadOnly)
 	FVector WaterPlaneLocation = FVector::ZeroVector;
@@ -38,10 +31,4 @@ public:
 	
 	UPROPERTY(BlueprintReadOnly)
 	FVector WaterVelocity = FVector::ZeroVector;
-	
-	UPROPERTY(BlueprintReadOnly)
-	int32 WaterBodyIdx = 0;
-	
-	UPROPERTY(BlueprintReadOnly)
-	float WaterHeight = 0.0f;
 };

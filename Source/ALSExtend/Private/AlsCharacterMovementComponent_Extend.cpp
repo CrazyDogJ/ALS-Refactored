@@ -180,7 +180,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 	}
 
 	//river velocity
-	const FVector Delta = GetWaterInfoForSwim().WaterVelocity * GetMovementSettingsExtendSafe()->SwimmingSettings.WaterVelocityForceMultiplier * deltaTime;
+	const FVector Delta = WaterInfoForSwim.WaterVelocity * GetMovementSettingsExtendSafe()->SwimmingSettings.WaterVelocityForceMultiplier * deltaTime;
 	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
 	
 	// Mantle and step on land
@@ -255,6 +255,46 @@ bool UAlsCharacterMovementComponent_Extend::CanCrouchInCurrentState() const
 	return Super::CanCrouchInCurrentState();
 }
 
+bool UAlsCharacterMovementComponent_Extend::IsWalkable(const FHitResult& Hit) const
+{
+	if (!Hit.IsValidBlockingHit())
+	{
+		// No hit, or starting in penetration
+		return false;
+	}
+
+	// Never walk up vertical surfaces.
+	const FVector::FReal ImpactNormalZ = GetGravitySpaceZ(Hit.ImpactNormal);
+	if (ImpactNormalZ < UE_KINDA_SMALL_NUMBER)
+	{
+		return false;
+	}
+
+	float TestWalkableZ = GetWalkableFloorZ();
+
+	// See if this component overrides the walkable floor z.
+	const UPrimitiveComponent* HitComponent = Hit.Component.Get();
+	if (HitComponent)
+	{
+		const FWalkableSlopeOverride& SlopeOverride = HitComponent->GetWalkableSlopeOverride();
+		TestWalkableZ = SlopeOverride.ModifyWalkableFloorZ(TestWalkableZ);
+	}
+
+	// Slide walkable threshold.
+	if (IsSliding())
+	{
+		TestWalkableZ = GetMovementSettingsExtendSafe()->SlidingSettings.GetSlideWalkableZ();
+	}
+	
+	// Can't walk on this surface if it is too steep.
+	if (ImpactNormalZ < TestWalkableZ)
+	{
+		return false;
+	}
+
+	return true;
+}
+
 void UAlsCharacterMovementComponent_Extend::SwimAtSurface(float deltaTime)
 {
 	const auto Position = GetWaterSurface();
@@ -268,7 +308,7 @@ float UAlsCharacterMovementComponent_Extend::Swim(const FVector& Delta, FHitResu
 	float airTime = 0.f;
 	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
 
-	if (GetWaterInfoForSwim().WaterBodyIdx < 0) //Use Water Plugin,then left water
+	if (WaterBodyComponents.Num() == 0) //Use Water Plugin,then left water
 	{
 		const FVector End = FindWaterLine(Start, UpdatedComponent->GetComponentLocation());
 		const float DesiredDist = Delta.Size();
@@ -289,7 +329,7 @@ FVector UAlsCharacterMovementComponent_Extend::FindWaterLine(const FVector& InWa
 {
 	FVector Result = OutofWater;
 
-	if (GetWaterInfoForSwim().WaterBodyIdx >= 0)
+	if (WaterBodyComponents.Num() > 0)
 	{
 		FVector Dir = (InWater - OutofWater).GetSafeNormal();
 		Result = GetWaterSurface();
@@ -304,24 +344,79 @@ FVector UAlsCharacterMovementComponent_Extend::FindWaterLine(const FVector& InWa
 
 FVector UAlsCharacterMovementComponent_Extend::GetWaterSurface() const
 {
-	return GetMovementSettingsExtendSafe()->SwimmingSettings.bIncludeWave ? GetWaterInfoForSwim().WaterSurfacePosition : GetWaterInfoForSwim().WaterPlaneLocation;
+	return GetMovementSettingsExtendSafe()->SwimmingSettings.bIncludeWave ?
+		WaterInfoForSwim.WaterSurfacePosition :
+		WaterInfoForSwim.WaterPlaneLocation;
 }
 
-UWaterBodyComponent* UAlsCharacterMovementComponent_Extend::GetCurrentWaterBodyComponent() const
+void UAlsCharacterMovementComponent_Extend::UpdateWaterInfoForSwim()
 {
+	WaterBodyComponents = GetWaterBodyComponents();
+	
+	if (CharacterOwner && WaterBodyComponents.Num() > 0)
+	{
+		EWaterBodyQueryFlags QueryFlags =
+			EWaterBodyQueryFlags::ComputeLocation
+			| EWaterBodyQueryFlags::ComputeNormal
+			| EWaterBodyQueryFlags::ComputeImmersionDepth
+			| EWaterBodyQueryFlags::ComputeVelocity
+			| EWaterBodyQueryFlags::IncludeWaves;
+
+		FVector HighestPlaneLocation = FVector::ZeroVector;
+		FVector HighestPlaneNormal = FVector::ZeroVector;
+		FVector HighestSurfacePosition = FVector::ZeroVector;
+		FVector BlendedVelocity = FVector::ZeroVector;
+		
+		for (int i = 0; i < WaterBodyComponents.Num(); ++i)
+		{
+			const auto WaterBody = WaterBodyComponents[i];
+			const auto QueryResult = WaterBody->QueryWaterInfoClosestToWorldLocation(UpdatedComponent->GetComponentLocation(), QueryFlags);
+			if (!QueryResult.IsInExclusionVolume())
+			{
+				if (i == 0)
+				{
+					HighestPlaneLocation = QueryResult.GetWaterPlaneLocation();
+					HighestPlaneNormal = QueryResult.GetWaterPlaneNormal();
+					HighestSurfacePosition = QueryResult.GetWaterSurfaceLocation();
+					BlendedVelocity = QueryResult.GetVelocity();
+				}
+				else
+				{
+					const auto CurrentPlaneLocation = QueryResult.GetWaterPlaneLocation();
+					if (CurrentPlaneLocation.Z > HighestPlaneLocation.Z)
+					{
+						HighestPlaneLocation = CurrentPlaneLocation;
+						HighestPlaneNormal = QueryResult.GetWaterPlaneNormal();
+					}
+					const auto CurrentSurfaceLocation = QueryResult.GetWaterSurfaceLocation();
+					if (CurrentSurfaceLocation.Z > HighestSurfacePosition.Z)
+					{
+						HighestSurfacePosition = CurrentSurfaceLocation;
+					}
+					BlendedVelocity += QueryResult.GetVelocity();
+				}
+			}
+		}
+		
+		WaterInfoForSwim = FWaterInfoForSwim(HighestPlaneLocation, HighestPlaneNormal, HighestSurfacePosition, BlendedVelocity);
+	}
+}
+
+TArray<UWaterBodyComponent*> UAlsCharacterMovementComponent_Extend::GetWaterBodyComponents() const
+{
+	TArray<UWaterBodyComponent*> OverlappedWaterBodyComponents;
+	
 	if (!CharacterOwner)
 	{
-		return nullptr;
+		return OverlappedWaterBodyComponents;
 	}
 	if (!CharacterOwner->GetCapsuleComponent())
 	{
-		return nullptr;
+		return OverlappedWaterBodyComponents;
 	}
 	
 	TArray<AActor*> OverlappedActors;
 	CharacterOwner->GetCapsuleComponent()->GetOverlappingActors(OverlappedActors);
-
-	TArray<UWaterBodyComponent*> OverlappedWaterBodyComponents;
 	for (const auto Actor : OverlappedActors)
 	{
 		if (const auto WaterBodyActor = Cast<AWaterBody>(Actor))
@@ -329,6 +424,13 @@ UWaterBodyComponent* UAlsCharacterMovementComponent_Extend::GetCurrentWaterBodyC
 			OverlappedWaterBodyComponents.Add(WaterBodyActor->GetWaterBodyComponent());
 		}
 	}
+
+	return OverlappedWaterBodyComponents;
+}
+
+UWaterBodyComponent* UAlsCharacterMovementComponent_Extend::GetCurrentWaterBodyComponent() const
+{
+	TArray<UWaterBodyComponent*> OverlappedWaterBodyComponents = WaterBodyComponents;
 
 	OverlappedWaterBodyComponents.Sort([](const UWaterBodyComponent& ABody, const UWaterBodyComponent& BBody)
 	{
@@ -351,43 +453,6 @@ UWaterBodyComponent* UAlsCharacterMovementComponent_Extend::GetCurrentWaterBodyC
 	}
 	
 	return nullptr;
-}
-
-FWaterInfoForSwim UAlsCharacterMovementComponent_Extend::GetWaterInfoForSwim() const
-{
-	float OutWaterDepth = 0;
-	FVector OutWaterPlaneLocation = FVector::ZeroVector;
-	FVector OutWaterPlaneNormal = FVector::ZeroVector;
-	FVector OutWaterSurfacePosition = FVector::ZeroVector;
-	FVector OutWaterVelocity = FVector::ZeroVector;
-	int32 OutWaterBodyIdx = -1;
-	float OutWaterHeight = 0;
-	auto CurrentWaterBody = GetCurrentWaterBodyComponent();
-	
-	if (CharacterOwner && CurrentWaterBody)
-	{
-		EWaterBodyQueryFlags QueryFlags =
-			EWaterBodyQueryFlags::ComputeLocation
-			| EWaterBodyQueryFlags::ComputeNormal
-			| EWaterBodyQueryFlags::ComputeImmersionDepth
-			| EWaterBodyQueryFlags::ComputeVelocity
-			| EWaterBodyQueryFlags::IncludeWaves;
-
-		FWaterBodyQueryResult QueryResult = CurrentWaterBody->QueryWaterInfoClosestToWorldLocation(UpdatedComponent->GetComponentLocation(), QueryFlags);
-		check(!QueryResult.IsInExclusionVolume());
-		OutWaterHeight = UpdatedComponent->GetComponentLocation().Z + QueryResult.GetImmersionDepth();
-		if (EnumHasAnyFlags(QueryResult.GetQueryFlags(), EWaterBodyQueryFlags::ComputeDepth))
-		{
-			OutWaterDepth = QueryResult.GetWaterSurfaceDepth();
-		}
-		OutWaterPlaneLocation = QueryResult.GetWaterPlaneLocation();
-		OutWaterPlaneNormal = QueryResult.GetWaterPlaneNormal();
-		OutWaterSurfacePosition = QueryResult.GetWaterSurfaceLocation();
-		OutWaterVelocity = QueryResult.GetVelocity();
-		OutWaterBodyIdx = CurrentWaterBody->GetWaterBodyIndex();
-	}
-
-	return FWaterInfoForSwim(OutWaterDepth, OutWaterPlaneLocation, OutWaterPlaneNormal, OutWaterSurfacePosition, OutWaterVelocity, OutWaterBodyIdx, OutWaterHeight);
 }
 
 void UAlsCharacterMovementComponent_Extend::GetDefaultUnscaledCapsule(float& OutCapsuleHalfHeight,
@@ -760,7 +825,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 
 bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing()
 {
-	if (GetWaterInfoForSwim().WaterBodyIdx >= 0 &&
+	if (WaterBodyComponents.Num() > 0 &&
 		GetGravitySpaceZ(Velocity) < 0 &&
 		!bSwimToClimb)
 	{
@@ -1817,22 +1882,21 @@ void UAlsCharacterMovementComponent_Extend::UpdateFromCompressedFlags(uint8 Flag
 
 void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
+	// Update water
+	UpdateWaterInfoForSwim();
+	
 	// Reset jump out of water & Update Swimming
 	if (GetGravitySpaceZ(Velocity) < 0.0f && bJumpingOutOfWater == true)
 	{
 		bJumpingOutOfWater = false;
 	}
 	
-	const bool TempSurface = bIsSwimOnSurface;
-	if (IsSwimming() && GetWaterInfoForSwim().WaterBodyIdx >= 0)
+	if (IsSwimming() && WaterBodyComponents.Num() > 0)
 	{
 		bIsSwimOnSurface = GetImmerseDepth() <= GetMovementSettingsExtendSafe()->SwimmingSettings.SwimOnSurfaceDepth;
 		// Update swimming state.
-		if (bIsSwimOnSurface != TempSurface)
-		{
-			const FGameplayTag SwimmingStateTag = bIsSwimOnSurface ? AlsSwimmingStateTags::Surface : AlsSwimmingStateTags::Underwater;
-			Cast<AAlsCharacter_Extend>(GetOwner())->SetGameplayTagInASC(SwimmingStateTag);
-		}
+		const FGameplayTag SwimmingStateTag = bIsSwimOnSurface ? AlsSwimmingStateTags::Surface : AlsSwimmingStateTags::Underwater;
+		Cast<AAlsCharacter_Extend>(GetOwner())->SetGameplayTagInASC(SwimmingStateTag);
 	}
 	else
 	{
@@ -1853,7 +1917,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 	}
 	if (IsClimbing())
 	{
-		if (bSwimToClimb && (GetWaterInfoForSwim().WaterBodyIdx < 0 || GetGravitySpaceZ(Acceleration) < 0))
+		if (bSwimToClimb && (WaterBodyComponents.Num() == 0 || GetGravitySpaceZ(Acceleration) < 0))
 		{
 			bSwimToClimb = false;
 		}
@@ -1933,7 +1997,7 @@ APhysicsVolume* UAlsCharacterMovementComponent_Extend::GetPhysicsVolume() const
 bool UAlsCharacterMovementComponent_Extend::IsInWater() const
 {
 	// Check is overlap water.
-	if (GetWaterInfoForSwim().WaterBodyIdx < 0)
+	if (WaterBodyComponents.Num() == 0)
 	{
 		return false;
 	}
@@ -1974,7 +2038,7 @@ float UAlsCharacterMovementComponent_Extend::ImmersionDepth() const
 	}
 
 	float Depth = 0.f;
-	if (GetWaterInfoForSwim().WaterBodyIdx >= 0)
+	if (WaterBodyComponents.Num() > 0)
 	{
 		Depth = FMath::Clamp(GetImmerseDepth() / (ScaledHalfHeight * 2), 0.f, 1.0f);
 	}
@@ -2579,9 +2643,11 @@ void UAlsCharacterMovementComponent_Extend::PhysGliding(float deltaTime, int32 I
 		}
 
 		FFindFloorResult FindFloorResult;
-		FVector FindLocation = UpdatedComponent->GetComponentLocation() - FVector(GetMovementSettingsExtendSafe()->GlidingSettings.GlideToFallCheckHeight);
+		const auto GlideCheckDistance = GetMovementSettingsExtendSafe()->GlidingSettings.GlideToFallCheckHeight;
+		FVector FindLocation = UpdatedComponent->GetComponentLocation() - GetGravityDirection() * GlideCheckDistance;
 		FindFloor(FindLocation, FindFloorResult,false);
-		if (IsValidLandingSpot(FindLocation, FindFloorResult.HitResult))
+		if (IsValidLandingSpot(FindLocation, FindFloorResult.HitResult) &&
+			GetGravitySpaceZ(UpdatedComponent->GetComponentLocation()) - GetGravitySpaceZ(FindFloorResult.HitResult.ImpactPoint) <= GlideCheckDistance)
 		{
 			SetMovementMode(MOVE_Falling);
 		}

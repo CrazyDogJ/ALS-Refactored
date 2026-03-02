@@ -15,9 +15,8 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Settings/AlsCharacterSettings.h"
 #include "Utility/AlsGameplayTags_Extend.h"
-#include "WaterBodyActor.h"
-#include "Engine/OverlapResult.h"
 #include "Utility/AlsConstants.h"
+#include "Utility/AlsDamageType.h"
 #include "Utility/AlsVector.h"
 
 void AAlsCharacter_Extend::OnConstruction(const FTransform& Transform)
@@ -978,6 +977,9 @@ void AAlsCharacter_Extend::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* 
 		return;
 	}
 
+	// Used to play sound.
+	OnRagdollHit(Hit, NormalImpulse, RagdollingState.Velocity);
+	
 	const auto HitNormal = NormalImpulse.GetSafeNormal();
 	const auto VelocityDir = RagdollVelocity.GetSafeNormal();
 	const auto ImpulseFactor = FMath::Abs(VelocityDir.Dot(HitNormal));
@@ -988,7 +990,7 @@ void AAlsCharacter_Extend::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* 
 		return;
 	}
 	
-	UGameplayStatics::ApplyDamage(this, FMath::Floor(Damage), GetController(), OtherActor, UDamageType::StaticClass());
+	UGameplayStatics::ApplyDamage(this, FMath::Floor(Damage), GetController(), OtherActor, UAlsDamageType_Ragdoll::StaticClass());
 
 	LastRagdollDamageTime = CurrentTime;
 } 
@@ -1400,7 +1402,7 @@ void AAlsCharacter_Extend::Landed(const FHitResult& Hit)
 		return;
 	}
 	// Apply land damage.
-	UGameplayStatics::ApplyDamage(this, Damage, GetController(), Hit.GetActor(), UDamageType::StaticClass());
+	UGameplayStatics::ApplyDamage(this, Damage, GetController(), Hit.GetActor(), UAlsDamageType_Fall::StaticClass());
 }
 
 void AAlsCharacter_Extend::NotifyViewModeChanged(const FGameplayTag& PreviousViewMode)

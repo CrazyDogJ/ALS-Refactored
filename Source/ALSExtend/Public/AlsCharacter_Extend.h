@@ -278,6 +278,10 @@ public:
 	UFUNCTION(Category = "Character Movement: Walking", BlueprintCallable, NetMulticast, Reliable)
 	void TurnInPlaceImmediately();
 
+	// Used to play sound.
+	UFUNCTION(BlueprintImplementableEvent)
+	void OnRagdollHit(FHitResult HitResult, FVector ImpulseVector, FVector RagdollVelocity);
+	
 	UFUNCTION()
 	void OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 

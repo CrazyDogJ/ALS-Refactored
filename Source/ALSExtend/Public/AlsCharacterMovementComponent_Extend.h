@@ -29,6 +29,7 @@ private:
 	virtual void PhysSwimming(float deltaTime, int32 Iterations) override;
 	virtual void StartSwimming(FVector OldLocation, FVector OldVelocity, float timeTick, float remainingTime, int32 Iterations) override;
 	virtual bool CanCrouchInCurrentState() const override;
+	virtual bool IsWalkable(const FHitResult& Hit) const override;
 	
 	void SwimAtSurface(float deltaTime);
 
@@ -40,8 +41,7 @@ private:
 	UFUNCTION(BlueprintPure, Category = "Character Movement: Swimming")
 	FVector GetWaterSurface() const;
 
-	UFUNCTION(BlueprintPure, Category = "Character Movement: Swimming")
-	FWaterInfoForSwim GetWaterInfoForSwim() const;
+	void UpdateWaterInfoForSwim();
 
 	void GetDefaultUnscaledCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius) const;
 	void GetDefaultScaledCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius) const;
@@ -51,6 +51,12 @@ public:
 	// Override the properties
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
 	TObjectPtr<UAlsMovementSettings_Extend> MovementSettings_Extend;
+	
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Character Movement: Swimming")
+	TArray<UWaterBodyComponent*> WaterBodyComponents;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Character Movement: Swimming")
+	FWaterInfoForSwim WaterInfoForSwim;
 	
 	// Sets default values for this component's properties
 	UAlsCharacterMovementComponent_Extend();
@@ -88,6 +94,9 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Character Movement: Swimming")
 	uint8 bWantsToJumpOutOfWater = 1;
 
+	UFUNCTION(BlueprintCallable)
+	TArray<UWaterBodyComponent*> GetWaterBodyComponents() const;
+	
 	UFUNCTION(BlueprintCallable)
 	UWaterBodyComponent* GetCurrentWaterBodyComponent() const;
 

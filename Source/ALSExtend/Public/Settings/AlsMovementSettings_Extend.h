@@ -38,7 +38,7 @@ struct ALSEXTEND_API FAlsGlidingSettings
 	float GlideRotationInterpSpeed{0.5f};
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(ClampMin="0", UIMin="0"))
-	float GlideToFallCheckHeight{100.0f};
+	float GlideToFallCheckHeight{50.0f};
 };
 
 USTRUCT(BlueprintType)
@@ -68,6 +68,14 @@ struct ALSEXTEND_API FAlsSlidingSettings
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float SlideRotationMultiplier = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin=0.0f, ClampMax=90.0f, UIMin=0.0f, UIMax=90.0f))
+	float SlideWalkableAngle = 70.0f;
+	
+	float GetSlideWalkableZ() const
+	{
+		return FMath::Cos(FMath::DegreesToRadians(SlideWalkableAngle));
+	}
 };
 
 USTRUCT(BlueprintType)
