@@ -1387,6 +1387,12 @@ void AAlsCharacter_Extend::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 
+	// Climb down ledge not deal damage.
+	if (LocomotionAction == AlsLocomotionActionTags::ClimbDownLedge)
+	{
+		return;
+	}
+	
 	// Get settings
 	const auto SettingsExtend = MovementSettings_Extend;
 	if (!SettingsExtend)

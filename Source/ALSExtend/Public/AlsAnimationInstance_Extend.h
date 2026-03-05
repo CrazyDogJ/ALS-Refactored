@@ -21,12 +21,15 @@ class ALSEXTEND_API UAlsAnimationInstance_Extend : public UAlsAnimationInstance
 #pragma region Properties
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Settings)
+	TArray<FName> TagNames {TEXT("Overlay"), TEXT("PostOverlay"), TEXT("PostFinal")};
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Settings)
 	TObjectPtr<UAlsMorphSettings> MorphSettings;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=State, Transient)
 	FBlinkMorphState MorphState;
 	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Settings)
 	TSubclassOf<UAnimInstance> DefaultOverlayAnimBP;
 
 	bool bNeedToTurnInPlace = false;
@@ -34,8 +37,9 @@ public:
 
 #pragma region Functions
 public:
-	virtual void NativeThreadSafeUpdateAnimation(float DeltaTime) override;
-
+	virtual void NativeInitializeAnimation() override;
+	virtual void NativeThreadSafeUpdateAnimation(float DeltaTime) override;	
+	
 	/*
 	 * Return random blink delay time base on morph settings.
 	 **/

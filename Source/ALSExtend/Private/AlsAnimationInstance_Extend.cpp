@@ -130,6 +130,16 @@ float UAlsAnimationInstance_Extend::GetMorphTarget(FName MorphName) const
 	return -1;
 }
 
+void UAlsAnimationInstance_Extend::NativeInitializeAnimation()
+{
+	Super::NativeInitializeAnimation();
+
+	for (const auto Tag : TagNames)
+	{
+		LinkAnimGraphByTag(Tag, DefaultOverlayAnimBP);
+	}
+}
+
 void UAlsAnimationInstance_Extend::NativeThreadSafeUpdateAnimation(float DeltaTime)
 {
 	Super::NativeThreadSafeUpdateAnimation(DeltaTime);

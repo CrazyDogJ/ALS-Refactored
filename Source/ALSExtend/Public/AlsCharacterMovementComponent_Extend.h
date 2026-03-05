@@ -31,8 +31,6 @@ private:
 	virtual bool CanCrouchInCurrentState() const override;
 	virtual bool IsWalkable(const FHitResult& Hit) const override;
 	
-	void SwimAtSurface(float deltaTime);
-
 	// ReSharper disable once CppHidingFunction
 	float Swim(const FVector& Delta, FHitResult& Hit);
 	// ReSharper disable once CppHidingFunction
@@ -393,6 +391,9 @@ public:
 
 	virtual bool IsFalling() const override;
 private:
+	virtual FVector NewFallVelocity(const FVector& InitialVelocity, const FVector& Gravity, float DeltaTime) const override;
+	virtual FVector GetAirControl(float DeltaTime, float TickAirControl, const FVector& FallAcceleration) override;
+	virtual void CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration) override;
 	void PhysGliding(float deltaTime, int32 Iterations);
 
 	virtual void ProcessLanded(const FHitResult& Hit, float remainingTime, int32 Iterations) override;

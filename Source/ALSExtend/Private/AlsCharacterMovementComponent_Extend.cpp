@@ -27,38 +27,24 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 
 	RestorePreAdditiveRootMotionVelocity();
 
-	//swim on surface(Water Plugin)
-	if (bIsSwimOnSurface)
-	{
-		if (UpdatedComponent->GetComponentLocation().Z >= GetWaterSurface().Z - 5.0f)
-		{
-			Buoyancy = 1;
-		}
-		else
-		{
-			Buoyancy = 1 + ImmersionDepth();
-		}
-	}
-	else
-	{
-		Buoyancy = 1;
-	}
-	
-	float Depth = ImmersionDepth();
-	float NetBuoyancy = Buoyancy * Depth;
+	const auto Position = GetWaterSurface();
+	const auto CompLoc = UpdatedComponent->GetComponentLocation();
+	const auto Distance = GetMovementSettingsExtendSafe()->SwimmingSettings.WaterSurfaceBelowDistance;
+	const auto SwimSurfaceZ = Position.Z - Distance;
+	const auto SurfaceDelta = SwimSurfaceZ - CompLoc.Z;
 	float OriginalAccelZ = Acceleration.Z;
 	bool bLimitedUpAccel = false;
-	float MaxSwimSpeedLocal = GetMaxSpeed();
-	
-	if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && (Velocity.Z > 0.33f * MaxSwimSpeedLocal) && (NetBuoyancy != 0.f))
+
+	// Swim on surface clamp.
+	if (bIsSwimOnSurface)
 	{
-		//damp positive Z out of water
-		Velocity.Z = FMath::Max<FVector::FReal>(0.33f * MaxSwimSpeedLocal, Velocity.Z * Depth * Depth);
-	}
-	else if (Depth < 0.65f)
-	{
+		// Don't update velocity.z when character wants to swim down.
+		if (Acceleration.Z >= 0.0f)
+		{
+			Velocity.Z = SurfaceDelta;
+		}
 		bLimitedUpAccel = (Acceleration.Z > 0.f);
-		Acceleration.Z = FMath::Min<FVector::FReal>(0.1f, Acceleration.Z);
+		Acceleration.Z = FMath::Min<FVector::FReal>(0.0f, Acceleration.Z);
 	}
 
 	Iterations++;
@@ -66,9 +52,8 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 	bJustTeleported = false;
 	if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity())
 	{
-		const float Friction = 0.5f * GetMovementSettingsExtendSafe()->SwimmingSettings.FluidFriction * Depth;
+		const float Friction = 0.5f * GetMovementSettingsExtendSafe()->SwimmingSettings.FluidFriction;
 		CalcVelocity(deltaTime, Friction, true, GetMaxBrakingDeceleration());
-		Velocity.Z += GetGravityZ() * deltaTime * (1.f - NetBuoyancy);
 	}
 
 	ApplyRootMotionToVelocity(deltaTime);
@@ -293,13 +278,6 @@ bool UAlsCharacterMovementComponent_Extend::IsWalkable(const FHitResult& Hit) co
 	}
 
 	return true;
-}
-
-void UAlsCharacterMovementComponent_Extend::SwimAtSurface(float deltaTime)
-{
-	const auto Position = GetWaterSurface();
-	const FVector Delta = deltaTime * GetMovementSettingsExtendSafe()->SwimmingSettings.SwimToSurfaceBuoyancyAdditive * (Position - FVector(0,0,GetMovementSettingsExtendSafe()->SwimmingSettings.SwimOnSurfaceAdditiveDepth) - UpdatedComponent->GetComponentLocation());
-	Velocity.Z += FMath::Max(0, Delta.Z);
 }
 
 float UAlsCharacterMovementComponent_Extend::Swim(const FVector& Delta, FHitResult& Hit)
@@ -798,7 +776,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 	MoveAlongClimbingSurface(deltaTime);
 
 	//Move on ledge
-	const float UpSpeed = FVector::DotProduct(Velocity, UpdatedComponent->GetUpVector());
+	const float UpSpeed = GetGravitySpaceZ(Velocity);
 	const bool bIsMovingUp = UpSpeed >= 1.0f && GetGravitySpaceZ(Acceleration) > 1.0f;
 	
 	if (bIsMovingUp && HasReachedEdge() && !HasAnimRootMotion())
@@ -2318,6 +2296,11 @@ void UAlsCharacterMovementComponent_Extend::ToggleGlideImplementation()
 
 bool UAlsCharacterMovementComponent_Extend::CheckCanGlide()
 {
+	if (!Cast<AAlsCharacter_Extend>(CharacterOwner)->IsAllowGliding())
+	{
+		return false;
+	}
+	
 	if (Super::IsFalling())
 	{
 		FHitResult HitResult;
@@ -2325,7 +2308,8 @@ bool UAlsCharacterMovementComponent_Extend::CheckCanGlide()
 		Params.AddIgnoredActor(GetOwner());
 		GetWorld()->LineTraceSingleByChannel(HitResult, UpdatedComponent->GetComponentLocation(),
 					UpdatedComponent->GetComponentLocation() + GetGravityDirection() * GetMovementSettingsExtendSafe()->GlidingSettings.CanStartGlideHeight, ECC_Pawn, Params);
-		if (Cast<AAlsCharacter_Extend>(CharacterOwner)->IsAllowGliding() && !HitResult.IsValidBlockingHit())
+		
+		if (!HitResult.IsValidBlockingHit())
 		{
 			//Check Water
 			FHitResult HitResult_1;
@@ -2335,6 +2319,11 @@ bool UAlsCharacterMovementComponent_Extend::CheckCanGlide()
 			{
 				return true;
 			}
+		}
+		else if (!IsWalkable(HitResult))
+		{
+			// If slipping in not walkable slope, we allow player to start glide.
+			return true;
 		}
 	}
 	return false;
@@ -2350,308 +2339,52 @@ bool UAlsCharacterMovementComponent_Extend::IsFalling() const
 	return Super::IsFalling() || IsGliding();
 }
 
+FVector UAlsCharacterMovementComponent_Extend::NewFallVelocity(const FVector& InitialVelocity, const FVector& Gravity,
+	float DeltaTime) const
+{
+	auto NewFallVelocity = Super::NewFallVelocity(InitialVelocity, Gravity, DeltaTime);
+	if (IsGliding())
+	{
+		const auto GlideInterpSpeed = GetMovementSettingsExtendSafe()->GlidingSettings.InterpToTargetGlideSpeed;
+		const float MaxGlideDownSpeed = GetMovementSettingsExtendSafe()->GlidingSettings.MaxGlideDownSpeed;
+		auto CurrentVelocityZ = GetGravitySpaceZ(InitialVelocity);
+		// Only try to clamp velocity when falling speed is overload.
+		if (FMath::Abs(CurrentVelocityZ) >= MaxGlideDownSpeed)
+		{
+			CurrentVelocityZ = FMath::FInterpTo(CurrentVelocityZ, FMath::Sign(CurrentVelocityZ) * MaxGlideDownSpeed, DeltaTime, GlideInterpSpeed);
+			SetGravitySpaceZ(NewFallVelocity, CurrentVelocityZ);
+			return NewFallVelocity;
+		}
+	}
+	
+	return Super::NewFallVelocity(InitialVelocity, Gravity, DeltaTime);
+}
+
+FVector UAlsCharacterMovementComponent_Extend::GetAirControl(float DeltaTime, float TickAirControl,
+	const FVector& FallAcceleration)
+{
+	if (IsGliding())
+	{
+		Super::GetAirControl(DeltaTime, GetMovementSettingsExtendSafe()->GlidingSettings.GlidingAirControl, FallAcceleration);
+	}
+	
+	return Super::GetAirControl(DeltaTime, TickAirControl, FallAcceleration);
+}
+
+void UAlsCharacterMovementComponent_Extend::CalcVelocity(float DeltaTime, float Friction, bool bFluid,
+	float BrakingDeceleration)
+{
+	if (IsGliding())
+	{
+		Super::CalcVelocity(DeltaTime, GetMovementSettingsExtendSafe()->GlidingSettings.GlidingLateralFriction, bFluid, BrakingDeceleration);
+	}
+	
+	Super::CalcVelocity(DeltaTime, Friction, bFluid, BrakingDeceleration);
+}
+
 void UAlsCharacterMovementComponent_Extend::PhysGliding(float deltaTime, int32 Iterations)
 {
-	if (deltaTime < MIN_TICK_TIME)
-	{
-		return;
-	}
-
-	// GetFallingLateralAcceleration();
-	const FVector GravityRelativeAcceleration = RotateWorldToGravity(Acceleration);
-	FVector FallAcceleration = RotateGravityToWorld(FVector(GravityRelativeAcceleration.X, GravityRelativeAcceleration.Y, 0.f));
-
-	// bound acceleration, falling object has minimal ability to impact acceleration
-	if (!HasAnimRootMotion() && GravityRelativeAcceleration.SizeSquared2D() > 0.f)
-	{
-		FallAcceleration = GetAirControl(deltaTime, GetMovementSettingsExtendSafe()->GlidingSettings.GlidingAirControl, FallAcceleration);
-		FallAcceleration = FallAcceleration.GetClampedToMaxSize(GetMaxAcceleration());
-	}
-	// GetFallingLateralAcceleration();
-	
-	const FVector GravityRelativeFallAcceleration = RotateWorldToGravity(FallAcceleration);
-	FallAcceleration = RotateGravityToWorld(FVector(GravityRelativeFallAcceleration.X, GravityRelativeFallAcceleration.Y, 0));
-	const bool bHasLimitedAirControl = ShouldLimitAirControl(deltaTime, FallAcceleration);
-
-	float remainingTime = deltaTime;
-	while( (remainingTime >= MIN_TICK_TIME) && (Iterations < MaxSimulationIterations) )
-	{
-		Iterations++;
-		float timeTick = GetSimulationTimeStep(remainingTime, Iterations);
-		remainingTime -= timeTick;
-		
-		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
-		const FQuat PawnRotation = UpdatedComponent->GetComponentQuat();
-		bJustTeleported = false;
-
-		const FVector OldVelocityWithRootMotion = Velocity;
-
-		RestorePreAdditiveRootMotionVelocity();
-
-		const FVector OldVelocity = Velocity;
-
-		// Apply input
-		const float MaxDecel = GetMaxBrakingDeceleration();
-		if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity())
-		{
-			// Compute Velocity
-			{
-				// Acceleration = FallAcceleration for CalcVelocity(), but we restore it after using it.
-				TGuardValue<FVector> RestoreAcceleration(Acceleration, FallAcceleration);
-				if (HasCustomGravity())
-				{
-					Velocity = FVector::VectorPlaneProject(Velocity, RotateGravityToWorld(FVector::UpVector));
-					const FVector GravityRelativeOffset = OldVelocity - Velocity;
-					CalcVelocity(timeTick, GetMovementSettingsExtendSafe()->GlidingSettings.GlidingLateralFriction, false, MaxDecel);
-					Velocity += GravityRelativeOffset;
-				}
-				else
-				{
-					Velocity.Z = 0.f;
-					CalcVelocity(timeTick, GetMovementSettingsExtendSafe()->GlidingSettings.GlidingLateralFriction, false, MaxDecel);
-					Velocity.Z = OldVelocity.Z;
-				}
-			}
-		}
-
-		// Glide changed here
-		const float ProjectionLength = FVector::DotProduct(Velocity, GetGravityDirection()) / GetGravityDirection().Size();
-		const float DeltaFromGlide = GetMovementSettingsExtendSafe()->GlidingSettings.MaxGlideDownSpeed - ProjectionLength;
-		const FVector Gravity = GetGravityDirection() * DeltaFromGlide * GetMovementSettingsExtendSafe()->GlidingSettings.InterpToTargetGlideSpeed * timeTick;
-		float GravityTime = timeTick;
-		// Glide changed here
-		
-		// Apply gravity
-		Velocity = NewFallVelocity(Velocity, Gravity, GravityTime);
-
-		//UE_LOG(LogCharacterMovement, Log, TEXT("dt=(%.6f) OldLocation=(%s) OldVelocity=(%s) OldVelocityWithRootMotion=(%s) NewVelocity=(%s)"), timeTick, *(UpdatedComponent->GetComponentLocation()).ToString(), *OldVelocity.ToString(), *OldVelocityWithRootMotion.ToString(), *Velocity.ToString());
-		ApplyRootMotionToVelocity(timeTick);
-		DecayFormerBaseVelocity(timeTick);
-
-		// Compute change in position (using midpoint integration method).
-		FVector Adjusted = 0.5f * (OldVelocityWithRootMotion + Velocity) * timeTick;
-
-		// Move
-		FHitResult Hit(1.f);
-		SafeMoveUpdatedComponent( Adjusted, PawnRotation, true, Hit);
-		
-		if (!HasValidData())
-		{
-			return;
-		}
-		
-		float LastMoveTimeSlice = timeTick;
-		float subTimeTickRemaining = timeTick * (1.f - Hit.Time);
-		
-		if ( IsSwimming() ) //just entered water
-		{
-			remainingTime += subTimeTickRemaining;
-			StartSwimming(OldLocation, OldVelocity, timeTick, remainingTime, Iterations);
-			return;
-		}
-		else if ( Hit.bBlockingHit )
-		{
-			if (IsValidLandingSpot(UpdatedComponent->GetComponentLocation(), Hit))
-			{
-				remainingTime += subTimeTickRemaining;
-				ProcessLanded(Hit, remainingTime, Iterations);
-				return;
-			}
-			else
-			{
-				// Compute impact deflection based on final velocity, not integration step.
-				// This allows us to compute a new velocity from the deflected vector, and ensures the full gravity effect is included in the slide result.
-				Adjusted = Velocity * timeTick;
-
-				// See if we can convert a normally invalid landing spot (based on the hit result) to a usable one.
-				if (!Hit.bStartPenetrating && ShouldCheckForValidLandingSpot(timeTick, Adjusted, Hit))
-				{
-					const FVector PawnLocation = UpdatedComponent->GetComponentLocation();
-					FFindFloorResult FloorResult;
-					FindFloor(PawnLocation, FloorResult, false);
-					if (FloorResult.IsWalkableFloor() && IsValidLandingSpot(PawnLocation, FloorResult.HitResult))
-					{
-						remainingTime += subTimeTickRemaining;
-						ProcessLanded(FloorResult.HitResult, remainingTime, Iterations);
-						return;
-					}
-				}
-
-				HandleImpact(Hit, LastMoveTimeSlice, Adjusted);
-				
-				// If we've changed physics mode, abort.
-				if (!HasValidData() || !IsFalling())
-				{
-					return;
-				}
-
-				// Limit air control based on what we hit.
-				// We moved to the impact point using air control, but may want to deflect from there based on a limited air control acceleration.
-				FVector VelocityNoAirControl = OldVelocity;
-				FVector AirControlAccel = Acceleration;
-				if (bHasLimitedAirControl)
-				{
-					// Compute VelocityNoAirControl
-					{
-						// Find velocity *without* acceleration.
-						TGuardValue<FVector> RestoreAcceleration(Acceleration, FVector::ZeroVector);
-						TGuardValue<FVector> RestoreVelocity(Velocity, OldVelocity);
-						if (HasCustomGravity())
-						{
-							Velocity = FVector::VectorPlaneProject(Velocity, RotateGravityToWorld(FVector::UpVector));
-							const FVector GravityRelativeOffset = OldVelocity - Velocity;
-							CalcVelocity(timeTick, GetMovementSettingsExtendSafe()->GlidingSettings.GlidingLateralFriction, false, MaxDecel);
-							VelocityNoAirControl = Velocity + GravityRelativeOffset;
-						}
-						else
-						{
-							Velocity.Z = 0.f;
-							CalcVelocity(timeTick, GetMovementSettingsExtendSafe()->GlidingSettings.GlidingLateralFriction, false, MaxDecel);
-							VelocityNoAirControl = FVector(Velocity.X, Velocity.Y, OldVelocity.Z);
-						}
-						
-						VelocityNoAirControl = NewFallVelocity(VelocityNoAirControl, Gravity, GravityTime);
-					}
-
-					constexpr bool bCheckLandingSpot = false; // we already checked above.
-					AirControlAccel = (Velocity - VelocityNoAirControl) / timeTick;
-					const FVector AirControlDeltaV = LimitAirControl(LastMoveTimeSlice, AirControlAccel, Hit, bCheckLandingSpot) * LastMoveTimeSlice;
-					Adjusted = (VelocityNoAirControl + AirControlDeltaV) * LastMoveTimeSlice;
-				}
-
-				const FVector OldHitNormal = Hit.Normal;
-				const FVector OldHitImpactNormal = Hit.ImpactNormal;				
-				FVector Delta = ComputeSlideVector(Adjusted, 1.f - Hit.Time, OldHitNormal, Hit);
-
-				// Compute velocity after deflection (only gravity component for RootMotion)
-				const UPrimitiveComponent* HitComponent = Hit.GetComponent();
-				if (!Velocity.IsNearlyZero() && MovementBaseUtility::IsSimulatedBase(HitComponent))
-				{
-					const FVector ContactVelocity = MovementBaseUtility::GetMovementBaseVelocity(HitComponent, NAME_None) + MovementBaseUtility::GetMovementBaseTangentialVelocity(HitComponent, NAME_None, Hit.ImpactPoint);
-					const FVector NewVelocity = Velocity - Hit.ImpactNormal * FVector::DotProduct(Velocity - ContactVelocity, Hit.ImpactNormal);
-					Velocity = HasAnimRootMotion() || CurrentRootMotion.HasOverrideVelocityWithIgnoreZAccumulate() ? FVector(Velocity.X, Velocity.Y, NewVelocity.Z) : NewVelocity;
-				}
-				else if (subTimeTickRemaining > UE_KINDA_SMALL_NUMBER && !bJustTeleported)
-				{
-					const FVector NewVelocity = (Delta / subTimeTickRemaining);
-					Velocity = HasAnimRootMotion() || CurrentRootMotion.HasOverrideVelocityWithIgnoreZAccumulate() ? FVector(Velocity.X, Velocity.Y, NewVelocity.Z) : NewVelocity;
-				}
-
-				if (subTimeTickRemaining > UE_KINDA_SMALL_NUMBER && (Delta | Adjusted) > 0.f)
-				{
-					// Move in deflected direction.
-					SafeMoveUpdatedComponent( Delta, PawnRotation, true, Hit);
-					
-					if (Hit.bBlockingHit)
-					{
-						// hit second wall
-						LastMoveTimeSlice = subTimeTickRemaining;
-						subTimeTickRemaining = subTimeTickRemaining * (1.f - Hit.Time);
-
-						if (IsValidLandingSpot(UpdatedComponent->GetComponentLocation(), Hit))
-						{
-							remainingTime += subTimeTickRemaining;
-							ProcessLanded(Hit, remainingTime, Iterations);
-							return;
-						}
-
-						HandleImpact(Hit, LastMoveTimeSlice, Delta);
-
-						// If we've changed physics mode, abort.
-						if (!HasValidData() || !IsFalling())
-						{
-							return;
-						}
-
-						// Act as if there was no air control on the last move when computing new deflection.
-						if (bHasLimitedAirControl && RotateWorldToGravity(Hit.Normal).Z > 0.001f)
-						{
-							const FVector LastMoveNoAirControl = VelocityNoAirControl * LastMoveTimeSlice;
-							Delta = ComputeSlideVector(LastMoveNoAirControl, 1.f, OldHitNormal, Hit);
-						}
-						
-						TwoWallAdjust(Delta, Hit, OldHitNormal);
-
-						// Limit air control, but allow a slide along the second wall.
-						if (bHasLimitedAirControl)
-						{
-							constexpr bool bCheckLandingSpot = false; // we already checked above.
-							const FVector AirControlDeltaV = LimitAirControl(subTimeTickRemaining, AirControlAccel, Hit, bCheckLandingSpot) * subTimeTickRemaining;
-
-							// Only allow if not back in to first wall
-							if (FVector::DotProduct(AirControlDeltaV, OldHitNormal) > 0.f)
-							{
-								Delta += (AirControlDeltaV * subTimeTickRemaining);
-							}
-						}
-
-						// Compute velocity after deflection (only gravity component for RootMotion)
-						if (subTimeTickRemaining > UE_KINDA_SMALL_NUMBER && !bJustTeleported)
-						{
-							const FVector NewVelocity = (Delta / subTimeTickRemaining);
-							Velocity = HasAnimRootMotion() || CurrentRootMotion.HasOverrideVelocityWithIgnoreZAccumulate() ? FVector(Velocity.X, Velocity.Y, NewVelocity.Z) : NewVelocity;
-						}
-
-						// bDitch=true means that pawn is straddling two slopes, neither of which it can stand on
-						bool bDitch = ( (RotateWorldToGravity(OldHitImpactNormal).Z > 0.f) && (RotateWorldToGravity(Hit.ImpactNormal).Z > 0.f) && (FMath::Abs(Delta.Z) <= UE_KINDA_SMALL_NUMBER) && ((Hit.ImpactNormal | OldHitImpactNormal) < 0.f) );
-						SafeMoveUpdatedComponent( Delta, PawnRotation, true, Hit);
-						if ( Hit.Time == 0.f )
-						{
-							// if we are stuck then try to side step
-							FVector SideDelta = (OldHitNormal + Hit.ImpactNormal).GetSafeNormal2D();
-							if ( SideDelta.IsNearlyZero() )
-							{
-								SideDelta = FVector(OldHitNormal.Y, -OldHitNormal.X, 0).GetSafeNormal();
-							}
-							SafeMoveUpdatedComponent( SideDelta, PawnRotation, true, Hit);
-						}
-							
-						if ( bDitch || IsValidLandingSpot(UpdatedComponent->GetComponentLocation(), Hit) || Hit.Time == 0.f  )
-						{
-							remainingTime = 0.f;
-							ProcessLanded(Hit, remainingTime, Iterations);
-							return;
-						}
-						else if (GetPerchRadiusThreshold() > 0.f && Hit.Time == 1.f && RotateWorldToGravity(OldHitImpactNormal).Z >= GetWalkableFloorZ())
-						{
-							// We might be in a virtual 'ditch' within our perch radius. This is rare.
-							const FVector PawnLocation = UpdatedComponent->GetComponentLocation();
-							const float ZMovedDist = FMath::Abs(RotateWorldToGravity(PawnLocation - OldLocation).Z);
-							const float MovedDist2DSq = FVector::VectorPlaneProject(PawnLocation - OldLocation, RotateGravityToWorld(FVector::UpVector)).Size2D();
-							if (ZMovedDist <= 0.2f * timeTick && MovedDist2DSq <= 4.f * timeTick)
-							{
-								FVector GravityRelativeVelocity = RotateWorldToGravity(Velocity);
-								GravityRelativeVelocity.X += 0.25f * GetMaxSpeed() * (RandomStream.FRand() - 0.5f);
-								GravityRelativeVelocity.Y += 0.25f * GetMaxSpeed() * (RandomStream.FRand() - 0.5f);
-								GravityRelativeVelocity.Z = FMath::Max<float>(JumpZVelocity * 0.25f, 1.f);
-								Velocity = RotateGravityToWorld(GravityRelativeVelocity);
-								Delta = Velocity * timeTick;
-								SafeMoveUpdatedComponent(Delta, PawnRotation, true, Hit);
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		FVector GravityRelativeVelocity = RotateWorldToGravity(Velocity);
-		if (GravityRelativeVelocity.SizeSquared2D() <= UE_KINDA_SMALL_NUMBER * 10.f)
-		{
-			GravityRelativeVelocity.X = 0.f;
-			GravityRelativeVelocity.Y = 0.f;
-			Velocity = RotateGravityToWorld(GravityRelativeVelocity);
-		}
-
-		FFindFloorResult FindFloorResult;
-		const auto GlideCheckDistance = GetMovementSettingsExtendSafe()->GlidingSettings.GlideToFallCheckHeight;
-		FVector FindLocation = UpdatedComponent->GetComponentLocation() - GetGravityDirection() * GlideCheckDistance;
-		FindFloor(FindLocation, FindFloorResult,false);
-		if (IsValidLandingSpot(FindLocation, FindFloorResult.HitResult) &&
-			GetGravitySpaceZ(UpdatedComponent->GetComponentLocation()) - GetGravitySpaceZ(FindFloorResult.HitResult.ImpactPoint) <= GlideCheckDistance)
-		{
-			SetMovementMode(MOVE_Falling);
-		}
-	}
+	PhysFalling(deltaTime, Iterations);
 }
 
 void UAlsCharacterMovementComponent_Extend::ProcessLanded(const FHitResult& Hit, float remainingTime, int32 Iterations)

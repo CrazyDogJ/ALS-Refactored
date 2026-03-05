@@ -68,9 +68,9 @@ void UAlsCameraComponent::InitAnim(const bool bForceReinitialize)
 
 void UAlsCameraComponent::BeginPlay()
 {
-	ALS_ENSURE(IsValid(GetAnimInstance()));
-	ALS_ENSURE(IsValid(Settings));
-	ALS_ENSURE(IsValid(Character));
+	// ALS_ENSURE(IsValid(GetAnimInstance()));
+	// ALS_ENSURE(IsValid(Settings));
+	// ALS_ENSURE(IsValid(Character));
 
 	SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	

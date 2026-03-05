@@ -14,7 +14,7 @@ struct ALSEXTEND_API FAlsGlidingSettings
 	float MaxGlideDownSpeed{120.0f};
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(ClampMin="0", UIMin="0"))
-	float InterpToTargetGlideSpeed{150.0f};
+	float InterpToTargetGlideSpeed{5.0f};
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(ClampMin="0", UIMin="0"))
 	float GlidingLateralFriction{1.0f};
@@ -172,13 +172,10 @@ struct ALSEXTEND_API FAlsSwimmingSettings
 	bool bIncludeWave = true;
 
 	UPROPERTY(EditDefaultsOnly)
-	float SwimToSurfaceBuoyancyAdditive = 20.0f;
-
+	float WaterSurfaceBelowDistance = 10.0f;
+	
 	UPROPERTY(EditDefaultsOnly)
 	float SwimOnSurfaceDepth = 200.0f;
-
-	UPROPERTY(EditDefaultsOnly)
-	float SwimOnSurfaceAdditiveDepth = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly)
 	float FluidFriction = 5.0f;
