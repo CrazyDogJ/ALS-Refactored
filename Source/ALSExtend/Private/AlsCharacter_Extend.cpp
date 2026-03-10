@@ -224,32 +224,6 @@ void AAlsCharacter_Extend::OnRep_PlayerState()
 	K2_OnPlayerStateRep();
 }
 
-FGenericTeamId AAlsCharacter_Extend::GetGenericTeamId() const
-{
-	if (GetController())
-	{
-		if (const IGenericTeamAgentInterface* TeamAgent = Cast<const IGenericTeamAgentInterface>(GetController()))
-		{
-			return TeamAgent->GetGenericTeamId();
-		}
-	}
-	
-	return IGenericTeamAgentInterface::GetGenericTeamId();
-}
-
-ETeamAttitude::Type AAlsCharacter_Extend::GetTeamAttitudeTowards(const AActor& Other) const
-{
-	if (GetController())
-	{
-		if (const IGenericTeamAgentInterface* TeamAgent = Cast<const IGenericTeamAgentInterface>(GetController()))
-		{
-			return TeamAgent->GetTeamAttitudeTowards(Other);
-		}
-	}
-	
-	return IGenericTeamAgentInterface::GetTeamAttitudeTowards(Other);
-}
-
 FGameplayTag AAlsCharacter_Extend::CalculateActualGait(const FGameplayTag& MaxAllowedGait) const
 {
 	if (LocomotionMode == AlsLocomotionModeTags::Swimming)

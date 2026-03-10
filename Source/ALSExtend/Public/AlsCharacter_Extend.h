@@ -8,7 +8,6 @@
 #include "Settings/AlsCapsuleSizeSettings.h"
 #include "AlsCameraComponent.h"
 #include "AlsCharacterMovementComponent_Extend.h"
-#include "GenericTeamAgentInterface.h"
 #include "MotionWarpingComponent.h"
 #include "AlsCharacter_Extend.generated.h"
 
@@ -36,7 +35,7 @@ class UAlsCameraComponent;
  * 
  */
 UCLASS(AutoExpandCategories = ("Settings|Als Character Extend", "State|Als Character Extend"))
-class ALSEXTEND_API AAlsCharacter_Extend : public AAlsCharacter, public IAbilitySystemInterface, public IGenericTeamAgentInterface
+class ALSEXTEND_API AAlsCharacter_Extend : public AAlsCharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -112,8 +111,6 @@ protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnPlayerStateChanged(APlayerState* NewPlayerState, APlayerState* OldPlayerState) override;
 	virtual void OnRep_PlayerState() override;
-	virtual FGenericTeamId GetGenericTeamId() const override;
-	virtual ETeamAttitude::Type GetTeamAttitudeTowards(const AActor& Other) const override;
 	virtual FGameplayTag CalculateActualGait(const FGameplayTag& MaxAllowedGait) const override;
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
 
