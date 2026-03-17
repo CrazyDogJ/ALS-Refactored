@@ -919,6 +919,14 @@ void AAlsCharacter_Extend::AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAs
 	GetMesh()->SetSkeletalMeshAsset(SkeletalMeshAsset);
 	GetMesh()->SetAnimInstanceClass(AnimInstanceClass);
 	GetMesh()->SetAnimationMode(EAnimationMode::Type::AnimationBlueprint);
+	// Update Materials
+	if (SkeletalMeshAsset)
+	{
+		for (int i = 0; i < SkeletalMeshAsset->GetMaterials().Num(); ++i)
+		{
+			GetMesh()->SetMaterial(i, SkeletalMeshAsset->GetMaterials()[i].MaterialInterface);
+		}
+	}
 }
 
 void AAlsCharacter_Extend::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
