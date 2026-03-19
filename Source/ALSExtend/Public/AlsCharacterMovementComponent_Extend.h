@@ -201,18 +201,6 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Climbing")
 	bool bCanClimbDownLedge = false;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Climbing")
-	FVector ClimbDownWarpingTarget_Forward;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Climbing")
-	FVector ClimbDownWarpingTarget_Down;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Climbing")
-	FRotator ClimbDownWarpingRotation_Down;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Character Movement: Climbing")
-	TObjectPtr<UPrimitiveComponent> ClimbDownCachedComponent;
-
 	//Swing start
 	UPROPERTY(BlueprintReadOnly, Replicated)
 	ASwingRopeActor* SwingActor = nullptr;
@@ -235,11 +223,6 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void RemoveIgnoreSwingRope(AActor* RemoveActor);
 	//Swing end
-	UFUNCTION(BlueprintCallable)
-	void CacheClimbDownInfo();
-
-	UFUNCTION(BlueprintCallable)
-	void ResetClimbDownInfo();
 
 	UFUNCTION(BlueprintCallable)
 	void TryClimbDashing();
@@ -374,13 +357,11 @@ private:
 
 #pragma region Glide
 public:
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Character Movement: Gliding")
+	uint8 bWantsToGlide : 1;
+	
 	UFUNCTION(BlueprintCallable, Category = "Character Movement: Gliding")
 	void ToggleGlide();
-
-	UFUNCTION(Server, Reliable)
-	void ServerToggleGlide();
-
-	void ToggleGlideImplementation();
 
 	// Useful in Gameplay Ability
 	UFUNCTION(BlueprintCallable)
@@ -410,10 +391,12 @@ public:
 	{
 		FLAG_Climb = 0x20,
 		FLAG_JumpOutWater = 0x40,
+		FLAG_Glide = 0x80,
 	};
 
 	uint8 bSavedWantsToClimb : 1;
 	uint8 bSavedWantsToJumpOutOfWater : 1;
+	uint8 bSavedWantsToGlide : 1;
 
 	///@brief Resets all saved variables.
 	virtual void Clear() override;

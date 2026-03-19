@@ -293,7 +293,7 @@ void AAlsCharacter_Extend::NotifyLocomotionModeChanged(const FGameplayTag& Previ
 	// Remove swimming state tag.
 	if (LocomotionMode != AlsLocomotionModeTags::Swimming)
 	{
-		SetGameplayTagInASC(FGameplayTag::EmptyTag, AlsSwimmingStateTags::SwimmingStateParent);
+		SetGameplayTagInASC(FGameplayTag::EmptyTag, false, AlsSwimmingStateTags::SwimmingStateParent);
 	}
 	else
 	{
@@ -327,7 +327,7 @@ void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag& Pre
 		}
 	}
 
-	SetGameplayTagInASC(LocomotionAction, AlsLocomotionActionTags::LocomotionActionParent);
+	SetGameplayTagInASC(LocomotionAction, false, AlsLocomotionActionTags::LocomotionActionParent);
 }
 
 void AAlsCharacter_Extend::NotifyRotationModeChanged(const FGameplayTag& PreviousRotationMode)
@@ -412,6 +412,8 @@ UAbilitySystemComponent* AAlsCharacter_Extend::GetAbilitySystemComponent() const
 AAlsCharacter_Extend::AAlsCharacter_Extend(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UAlsCharacterMovementComponent_Extend>(ACharacter::CharacterMovementComponentName))
 {
+	// Rep Sub-Object.
+	bReplicateUsingRegisteredSubObjectList = true;
 	// Camera
 	Camera = CreateDefaultSubobject<UAlsCameraComponent>(FName{TEXTVIEW("Camera")});
 	Camera->SetupAttachment(GetMesh());
@@ -448,6 +450,58 @@ void AAlsCharacter_Extend::TryClimbDownLedge()
 		return;
 	}
 
+	if (MovementComponent_Extend->bCanClimbDownLedge)
+	{
+		if (GetLocalRole() >= ROLE_Authority)
+		{
+			MulticastClimbDownLedge();
+		}
+		else
+		{
+			GetCharacterMovement()->FlushServerMoves();
+			ServerClimbDownLedge();
+		}
+	}
+}
+
+void AAlsCharacter_Extend::ServerClimbDownLedge_Implementation()
+{
+	MulticastClimbDownLedge();
+	ForceNetUpdate();
+}
+
+void AAlsCharacter_Extend::MulticastClimbDownLedge_Implementation()
+{
+	ClimbDownLedgeImplementation();
+}
+
+void AAlsCharacter_Extend::OnClimbDownMontageBlendOut(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (!RuntimeMovementSettings_Extend)
+	{
+		return;
+	}
+	
+	if (Montage != RuntimeMovementSettings_Extend->ClimbingSettings.ClimbDownMontage)
+	{
+		return;
+	}
+
+	MovementComponent_Extend->StopMovementImmediately();
+	MovementComponent_Extend->SetMovementMode(MOVE_Falling);
+	SetLocomotionAction(FGameplayTag::EmptyTag);
+	K2_AutoTryClimb();
+}
+
+void AAlsCharacter_Extend::ClimbDownLedgeImplementation()
+{
+	// Init Check
+	if (!RuntimeMovementSettings_Extend)
+	{
+		return;
+	}
+	
+	// Get Data
 	FVector ForwardLoc;
 	FVector DownLoc;
 	FRotator ForwardRot;
@@ -470,59 +524,13 @@ void AAlsCharacter_Extend::TryClimbDownLedge()
 		DownLoc, FVector::OneVector),
 		CurrentFloorComp->GetSocketTransform(BasedMovement.BoneName));
 
-	auto ClimbDownParams = FClimbDownParams(CurrentFloorComp, BasedMovement.BoneName, TransformA, TransformB);
+	auto Params = FClimbDownParams(CurrentFloorComp, BasedMovement.BoneName, TransformA, TransformB);
 
-	if (GetLocalRole() >= ROLE_Authority)
-	{
-		MulticastClimbDownLedge(ClimbDownParams);
-	}
-	else
-	{
-		GetCharacterMovement()->FlushServerMoves();
+	// Log
+	UE_LOG(LogTemp, Warning, TEXT("Climb down params : Component : %s, Bone Name : %s Transform_A : %s, Transform_B : %s"),
+		*Params.Component->GetName(), *Params.SocketName.ToString(), *Params.Transform_A.ToString(), *Params.Transform_B.ToString())
 
-		ClimbDownLedgeImplementation(ClimbDownParams);
-		ServerClimbDownLedge(ClimbDownParams);
-	}
-}
-
-void AAlsCharacter_Extend::ServerClimbDownLedge_Implementation(const FClimbDownParams& Params)
-{
-	MulticastClimbDownLedge(Params);
-	ForceNetUpdate();
-}
-
-void AAlsCharacter_Extend::MulticastClimbDownLedge_Implementation(const FClimbDownParams& Params)
-{
-	ClimbDownLedgeImplementation(Params);
-}
-
-void AAlsCharacter_Extend::OnClimbDownMontageBlendOut(UAnimMontage* Montage, bool bInterrupted)
-{
-	if (!RuntimeMovementSettings_Extend)
-	{
-		return;
-	}
-	
-	if (Montage != RuntimeMovementSettings_Extend->ClimbingSettings.ClimbDownMontage)
-	{
-		return;
-	}
-
-	MovementComponent_Extend->StopMovementImmediately();
-	MovementComponent_Extend->SetMovementMode(MOVE_Falling);
-	SetLocomotionAction(FGameplayTag::EmptyTag);
-	K2_AutoTryClimb();
-}
-
-void AAlsCharacter_Extend::ClimbDownLedgeImplementation(const FClimbDownParams& Params)
-{
-	UE_LOG(LogTemp, Warning, TEXT("Climb down params : Component : %s, Transform_A : %s, Transform_B : %s"), *Params.Component->GetName(), *Params.Transform_A.ToString(), *Params.Transform_B.ToString())
-
-	if (!RuntimeMovementSettings_Extend)
-	{
-		return;
-	}
-	
+	// Execute
 	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(RuntimeMovementSettings_Extend->ClimbingSettings.WarpTarget_A,
 													   Params.Component, Params.SocketName, true,
 													   Params.Transform_A.GetLocation(), Params.Transform_A.GetRotation().Rotator());
@@ -1021,7 +1029,7 @@ bool AAlsCharacter_Extend::StartMantlingGliding()
 		   StartMantling(Settings->Mantling.InAirTrace); 
 }
 
-void AAlsCharacter_Extend::SetGameplayTagInASC(const FGameplayTag& AlsTag, const FGameplayTag& AlsParentTag)
+void AAlsCharacter_Extend::SetGameplayTagInASC(const FGameplayTag& AlsTag, const bool& bInit, const FGameplayTag& AlsParentTag)
 {
 	if (!GetAbilitySystemComponent()) return;
 	
@@ -1032,19 +1040,19 @@ void AAlsCharacter_Extend::SetGameplayTagInASC(const FGameplayTag& AlsTag, const
 	const auto FilteredChildren = ParentTagChildren.Filter(GetAbilitySystemComponent()->GetOwnedGameplayTags());
 	if (!FilteredChildren.IsEmpty())
 	{
-		UAbilitySystemBlueprintLibrary::RemoveLooseGameplayTags(this, FilteredChildren, true);
+		UAbilitySystemBlueprintLibrary::RemoveLooseGameplayTags(this, FilteredChildren, bInit);
 	}
-	UAbilitySystemBlueprintLibrary::AddLooseGameplayTags(this, FGameplayTagContainer(AlsTag), true);
+	UAbilitySystemBlueprintLibrary::AddLooseGameplayTags(this, FGameplayTagContainer(AlsTag), bInit);
 }
 
 void AAlsCharacter_Extend::InitGameplayTagInASC()
 {
-	SetGameplayTagInASC(ViewMode);
-	SetGameplayTagInASC(LocomotionMode);
-	SetGameplayTagInASC(RotationMode);
-	SetGameplayTagInASC(Stance);
-	SetGameplayTagInASC(Gait);
-	SetGameplayTagInASC(LocomotionAction);
+	SetGameplayTagInASC(ViewMode, true);
+	SetGameplayTagInASC(LocomotionMode, true);
+	SetGameplayTagInASC(RotationMode, true);
+	SetGameplayTagInASC(Stance, true);
+	SetGameplayTagInASC(Gait, true);
+	SetGameplayTagInASC(LocomotionAction, true);
 }
 
 void AAlsCharacter_Extend::InitCapsuleSize()

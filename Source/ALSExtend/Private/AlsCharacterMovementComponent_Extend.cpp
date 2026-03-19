@@ -470,6 +470,7 @@ UAlsCharacterMovementComponent_Extend::UAlsCharacterMovementComponent_Extend()
 {
 	bWantsToJumpOutOfWater = false,
 	bWantsToClimb = false;
+	bWantsToGlide = false;
 
 	SetIsReplicatedByDefault(true);
 }
@@ -1279,18 +1280,6 @@ void UAlsCharacterMovementComponent_Extend::RemoveIgnoreSwingRope_Implementation
 	GetCharacterOwner()->MoveIgnoreActorRemove(SwingActor);
 }
 
-void UAlsCharacterMovementComponent_Extend::CacheClimbDownInfo()
-{
-	bool bCanClimbDownNull;
-	CheckClimbDownLedge(ClimbDownWarpingTarget_Forward, ClimbDownWarpingTarget_Down, ClimbDownWarpingRotation_Down, bCanClimbDownNull);
-	ClimbDownCachedComponent = CurrentFloor.HitResult.GetComponent();
-}
-
-void UAlsCharacterMovementComponent_Extend::ResetClimbDownInfo()
-{
-	ClimbDownCachedComponent = nullptr;
-}
-
 void UAlsCharacterMovementComponent_Extend::TryClimbDashing()
 {
 	if (GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDashCurve && bIsClimbDashing == false && IsClimbing())
@@ -1650,6 +1639,11 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		ExitSwing(false);
 	}
 
+	if (PreviousMovementMode == MOVE_Custom && PreviousCustomMode == CMOVE_Gliding && !IsGliding())
+	{
+		bWantsToGlide = false;
+	}
+	
 	// Set back to default half height and radius
 	if (!IsSwimming() || !IsClimbing())
 	{
@@ -1856,6 +1850,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateFromCompressedFlags(uint8 Flag
 	//It basically just resets the movement component to the state when the move was made so it can simulate from there.
 	bWantsToJumpOutOfWater = (Flags & FAlsSavedMove_Extend::FLAG_JumpOutWater) != 0;
 	bWantsToClimb = (Flags & FAlsSavedMove_Extend::FLAG_Climb) != 0;
+	bWantsToGlide = (Flags & FAlsSavedMove_Extend::FLAG_Glide) != 0;
 }
 
 void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
@@ -1886,6 +1881,12 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 			//reset wants to jump out of water after entering swimming
 			bWantsToJumpOutOfWater = false;
 		}
+	}
+
+	// Enter glide.
+	if (bWantsToGlide && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+	{
+		SetMovementMode(MOVE_Custom, CMOVE_Gliding);
 	}
 	
 	// Update free climbing
@@ -1949,6 +1950,7 @@ void UAlsCharacterMovementComponent_Extend::GetLifetimeReplicatedProps(
 
 	DOREPLIFETIME_CONDITION(UAlsCharacterMovementComponent_Extend, bWantsToJumpOutOfWater, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(UAlsCharacterMovementComponent_Extend, bWantsToClimb, COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(UAlsCharacterMovementComponent_Extend, bWantsToGlide, COND_SkipOwner);
 	DOREPLIFETIME(UAlsCharacterMovementComponent_Extend, bIsClimbDashing);
 	DOREPLIFETIME(UAlsCharacterMovementComponent_Extend, SwingActor);
 	DOREPLIFETIME(UAlsCharacterMovementComponent_Extend, OnRopeDistance);
@@ -2262,35 +2264,13 @@ bool UAlsCharacterMovementComponent_Extend::IsSliding() const
 
 void UAlsCharacterMovementComponent_Extend::ToggleGlide()
 {
-	if (CharacterOwner->GetLocalRole() >= ROLE_Authority)
+	if (bWantsToGlide)
 	{
-		ToggleGlideImplementation();
+		bWantsToGlide = false;
 	}
-	else
+	else if (CheckCanGlide())
 	{
-		FlushServerMoves();
-
-		ToggleGlideImplementation();
-		ServerToggleGlide();
-	}
-}
-
-void UAlsCharacterMovementComponent_Extend::ServerToggleGlide_Implementation()
-{
-	ToggleGlideImplementation();
-}
-
-void UAlsCharacterMovementComponent_Extend::ToggleGlideImplementation()
-{
-	if (IsGliding())
-	{
-		SetMovementMode(MOVE_Falling);
-		return;
-	}
-	
-	if (CheckCanGlide())
-	{
-		SetMovementMode(MOVE_Custom, CMOVE_Gliding);
+		bWantsToGlide = true;
 	}
 }
 
@@ -2385,6 +2365,10 @@ void UAlsCharacterMovementComponent_Extend::CalcVelocity(float DeltaTime, float 
 void UAlsCharacterMovementComponent_Extend::PhysGliding(float deltaTime, int32 Iterations)
 {
 	PhysFalling(deltaTime, Iterations);
+	if (!bWantsToGlide)
+	{
+		SetMovementMode(MOVE_Falling);
+	}
 }
 
 void UAlsCharacterMovementComponent_Extend::ProcessLanded(const FHitResult& Hit, float remainingTime, int32 Iterations)
@@ -2429,6 +2413,7 @@ void FAlsSavedMove_Extend::Clear()
 	//Clear variables back to their default values.
 	bSavedWantsToJumpOutOfWater = false;
 	bSavedWantsToClimb = false;
+	bSavedWantsToGlide = false;
 }
 
 uint8 FAlsSavedMove_Extend::GetCompressedFlags() const
@@ -2444,12 +2429,19 @@ uint8 FAlsSavedMove_Extend::GetCompressedFlags() const
 	{
 		Result |= FLAG_Climb;
 	}
+
+	if (bSavedWantsToGlide)
+	{
+		Result |= FLAG_Glide;
+	}
+	
 	return Result;
 }
 
 bool FAlsSavedMove_Extend::CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const
 {
 	const auto* NewMoveExtend = static_cast<FAlsSavedMove_Extend*>(NewMove.Get());
+	
 	if (bSavedWantsToJumpOutOfWater != NewMoveExtend->bSavedWantsToJumpOutOfWater)
 	{
 		return false;
@@ -2459,6 +2451,12 @@ bool FAlsSavedMove_Extend::CanCombineWith(const FSavedMovePtr& NewMove, ACharact
 	{
 		return false;
 	}
+
+	if (bSavedWantsToGlide != NewMoveExtend->bSavedWantsToGlide)
+	{
+		return false;
+	}
+	
 	return FAlsSavedMove::CanCombineWith(NewMove, Character, MaxDelta);
 }
 
@@ -2473,6 +2471,7 @@ void FAlsSavedMove_Extend::SetMoveFor(ACharacter* Character, float InDeltaTime, 
 		//from the player and storing it in the saved move.
 		bSavedWantsToJumpOutOfWater = CharMov->bWantsToJumpOutOfWater;
 		bSavedWantsToClimb = CharMov->bWantsToClimb;
+		bSavedWantsToGlide = CharMov->bWantsToGlide;
 	}
 }
 
@@ -2484,6 +2483,7 @@ void FAlsSavedMove_Extend::PrepMoveFor(ACharacter* Character)
 	{
 		CharMov->bWantsToJumpOutOfWater = bSavedWantsToJumpOutOfWater;
 		CharMov->bWantsToClimb = bSavedWantsToClimb;
+		CharMov->bWantsToGlide = bSavedWantsToGlide;
 	}
 }
 

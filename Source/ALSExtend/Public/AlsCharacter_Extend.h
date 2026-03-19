@@ -152,15 +152,15 @@ public:
 	void TryClimbDownLedge();
 
 	UFUNCTION(Server, Reliable)
-	void ServerClimbDownLedge(const FClimbDownParams& Params);
+	void ServerClimbDownLedge();
 
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastClimbDownLedge(const FClimbDownParams& Params);
+	void MulticastClimbDownLedge();
 
 	UFUNCTION()
 	void OnClimbDownMontageBlendOut(UAnimMontage* Montage, bool bInterrupted);
 	
-	void ClimbDownLedgeImplementation(const FClimbDownParams& Params);
+	void ClimbDownLedgeImplementation();
 	// Climb down ledge
 	
 	UFUNCTION(BlueprintCallable, Category = "View")
@@ -291,7 +291,7 @@ public:
 
 	bool StartMantlingGliding();
 
-	void SetGameplayTagInASC(const FGameplayTag& AlsTag, const FGameplayTag& AlsParentTag = FGameplayTag::EmptyTag);
+	void SetGameplayTagInASC(const FGameplayTag& AlsTag, const bool& bInit = false, const FGameplayTag& AlsParentTag = FGameplayTag::EmptyTag);
 	void InitGameplayTagInASC();
 	
 	UAlsCapsuleSizeSettings* GetCapsuleSettings() const { return CapsuleSizeSettings; }
