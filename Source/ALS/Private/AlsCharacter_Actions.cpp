@@ -1225,8 +1225,6 @@ void AAlsCharacter::StopRagdollingImplementation()
 
 	if (RagdollingState.bGrounded && GetMesh()->GetAnimInstance()->Montage_Play(SelectGetUpMontage(bRagdollFacingUpward)) > 0.0f)
 	{
-		AlsCharacterMovement->SetInputBlocked(true);
-
 		SetLocomotionAction(AlsLocomotionActionTags::GettingUp);
 	}
 }

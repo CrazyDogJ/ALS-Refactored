@@ -636,7 +636,6 @@ void AAlsCharacter_Extend::ClimbToWalkGetUp_Implementation()
 {
 	if (GetMesh()->GetAnimInstance()->Montage_Play(SelectClimbToWalkMontage()) > 0.0f)
 	{
-		AlsCharacterMovement->SetInputBlocked(true);
 		SetLocomotionAction(AlsLocomotionActionTags::GettingUp);
 	}
 }

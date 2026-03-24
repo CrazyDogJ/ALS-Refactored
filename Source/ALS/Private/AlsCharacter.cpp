@@ -1163,6 +1163,11 @@ bool AAlsCharacter::IsRootMotionMontagePlaying() const
 
 void AAlsCharacter::NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction)
 {
+	if (LocomotionAction == AlsLocomotionActionTags::GettingUp)
+	{
+		AlsCharacterMovement->SetInputBlocked(true);
+	}
+	
 	if (!LocomotionAction.IsValid())
 	{
 		AlsCharacterMovement->SetInputBlocked(false);
