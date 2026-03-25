@@ -8,6 +8,7 @@
 #include "SwingRopeActor.h"
 #include "Utility/WaterInfoForSwim.h"
 #include "WaterBodyComponent.h"
+#include "Utility/CustomMovementMode.h"
 #include "AlsCharacterMovementComponent_Extend.generated.h"
 
 class UAlsCapsuleSizeSettings;
@@ -159,9 +160,9 @@ private:
 	void ComputeSurfaceInfo(TArray<FHitResult>& WallHits, FVector& Position, FVector& Normal, const FVector& VelocityHitNormal, const FVector& Start) const;
 	void ComputeClimbingVelocity(float deltaTime);
 	void AlignClimbDashDirection();
-	bool ShouldStopClimbing();
+	bool ShouldStopClimbing(EStopClimbingType& StopClimbingType) const;
 	bool HasReachedEdge() const;
-	void StopClimbing(float deltaTime, int32 Iterations, bool bShouldClimbDownFloor);
+	void StopClimbing(float deltaTime, int32 Iterations, const EStopClimbingType& StopClimbingType);
 	void MoveAlongClimbingSurface(float deltaTime);
 	void SnapToClimbingSurface(float deltaTime) const;
 	bool ClimbDownToFloor() const;

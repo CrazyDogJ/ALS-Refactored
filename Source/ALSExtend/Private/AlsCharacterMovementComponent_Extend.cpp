@@ -750,23 +750,30 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 		SetBase(BaseHit.Component.Get(), BaseHit.BoneName);
 	}
 
-	const bool bClimbDownFloor = ClimbDownToFloor();
-	if (ShouldStopClimbing() || bClimbDownFloor)
+	EStopClimbingType StopClimbingType;
+	if (ShouldStopClimbing(StopClimbingType))
 	{
 #if WITH_EDITOR
 		if (DebugDrawSwitch)
 		{
-			if (ShouldStopClimbing())
+			FString DebugString;
+			switch (StopClimbingType)
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Should Stop Climbing Function"));
+			case SCT_Normal:
+				DebugString = "Normal";
+				break;
+			case SCT_ClimbDownFloor:
+				DebugString = "ClimbDownFloor";
+				break;
+			case SCT_ClimbToWalk:
+				DebugString = "ClimbToWalk";
+				break;
+			default: DebugString = "INVALID";
 			}
-			else
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Climb Down to Floor"));
-			}
+			GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, FString::Printf(TEXT("Stop Climb Type : %s"), *DebugString));
 		}
 #endif
-		StopClimbing(deltaTime, Iterations, bClimbDownFloor);
+		StopClimbing(deltaTime, Iterations, StopClimbingType);
 		return;
 	}
 
@@ -789,7 +796,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 #if WITH_EDITOR
 				if (DebugDrawSwitch) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Try mantle"));
 #endif
-				StopClimbing(deltaTime, Iterations, false);
+				StopClimbing(deltaTime, Iterations, SCT_Normal);
 			}
 		}
 	}
@@ -802,12 +809,21 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 	SnapToClimbingSurface(deltaTime);
 }
 
-bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing()
+bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing(EStopClimbingType& StopClimbingType) const
 {
+	// Climb down floor check.
+	if (ClimbDownToFloor())
+	{
+		StopClimbingType = SCT_ClimbDownFloor;
+		return true;
+	}
+
+	// Down water floor check.
 	if (WaterBodyComponents.Num() > 0 &&
 		GetGravitySpaceZ(Velocity) < 0 &&
 		!bSwimToClimb)
 	{
+		StopClimbingType = SCT_Normal;
 		return true;
 	}
 	
@@ -854,7 +870,11 @@ bool UAlsCharacterMovementComponent_Extend::ShouldStopClimbing()
 	{
 		if (bWalkable)
 		{
-			Cast<AAlsCharacter_Extend>(CharacterOwner)->NativeClimbToWalk();
+			StopClimbingType = SCT_ClimbToWalk;
+		}
+		else
+		{
+			StopClimbingType = SCT_Normal;
 		}
 #if WITH_EDITOR
 		if (DebugDrawSwitch) DrawDebugLine(GetWorld(), CurrentClimbingPosition, CurrentClimbingPosition + CurrentClimbingNormal * 50, FColor::Red, true, 5);
@@ -873,16 +893,23 @@ bool UAlsCharacterMovementComponent_Extend::HasReachedEdge() const
 	return !EyeHeightTrace(TraceDistance, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector());
 }
 
-void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 Iterations, bool bShouldClimbDownFloor)
+void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 Iterations, const EStopClimbingType& StopClimbingType)
 {
 	bWantsToClimb = false;
 	
-	if (bShouldClimbDownFloor)
+	if (StopClimbingType != SCT_Normal)
 	{
 		SetMovementMode(MOVE_Walking);
 		StartNewPhysics(deltaTime, Iterations);
 		const auto Character = Cast<AAlsCharacter_Extend>(CharacterOwner);
-		Character->GetMesh()->GetAnimInstance()->Montage_Play(GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDownFloorMontage);
+		if (StopClimbingType == SCT_ClimbDownFloor)
+		{
+			Character->GetMesh()->GetAnimInstance()->Montage_Play(GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDownFloorMontage);
+		}
+		else
+		{
+			Character->NativeClimbToWalk();
+		}
 	}
 	else
 	{
@@ -1081,10 +1108,11 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	}
 	
 	//3.Find ledge wall;
-	const float AngleBaseDistance = GetAngleBaseDistance(DefaultRadius, 2 * DefaultHalfHeight);
+	const float DownDistance = DefaultHalfHeight;
+	const float AngleBaseDistance = GetAngleBaseDistance(DefaultRadius, DownDistance);
 	FHitResult LineWallHit;
-	const FVector LineWallStart = CompBottomLoc + CompForward * AngleBaseDistance + GetGravityDirection() * DefaultHalfHeight * 2;
-	const FVector LineWallEnd = CompBottomLoc + GetGravityDirection() * DefaultHalfHeight * 2 - CompForward * AngleBaseDistance;
+	const FVector LineWallStart = CompBottomLoc + CompForward * AngleBaseDistance + GetGravityDirection() * DownDistance;
+	const FVector LineWallEnd = CompBottomLoc + GetGravityDirection() * DownDistance - CompForward * AngleBaseDistance;
 	const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
 	GetWorld()->LineTraceSingleByChannel(LineWallHit, LineWallStart, LineWallEnd, TraceChannel, ClimbQueryParams);
 #if WITH_EDITOR

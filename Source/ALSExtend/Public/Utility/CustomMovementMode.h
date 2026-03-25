@@ -14,3 +14,11 @@ enum ECustomMovementMode : uint8
 	CMOVE_Gliding		UMETA(DisplayName = "Gliding"),
 	CMOVE_MAX			UMETA(Hidden),
 };
+
+UENUM(BlueprintType)
+enum EStopClimbingType : uint8
+{
+	SCT_Normal			UMETA(DisplayName = "Normal"),
+	SCT_ClimbDownFloor	UMETA(DisplayName = "ClimbDownFloor"),
+	SCT_ClimbToWalk		UMETA(DisplayName = "ClimbToWalk"),
+};
