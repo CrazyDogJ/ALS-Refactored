@@ -1883,31 +1883,35 @@ void UAlsCharacterMovementComponent_Extend::UpdateFromCompressedFlags(uint8 Flag
 
 void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
-	// Update water
-	UpdateWaterInfoForSwim();
+	// Only that agent can swim should check.
+	if (CanEverSwim())
+	{
+		// Update water
+		UpdateWaterInfoForSwim();
 	
-	// Reset jump out of water & Update Swimming
-	if (GetGravitySpaceZ(Velocity) < 0.0f && bJumpingOutOfWater == true)
-	{
-		bJumpingOutOfWater = false;
-	}
-	
-	if (IsSwimming() && WaterBodyComponents.Num() > 0)
-	{
-		bIsSwimOnSurface = GetImmerseDepth() <= GetMovementSettingsExtendSafe()->SwimmingSettings.SwimOnSurfaceDepth;
-		// Update swimming state.
-		const FGameplayTag SwimmingStateTag = bIsSwimOnSurface ? AlsSwimmingStateTags::Surface : AlsSwimmingStateTags::Underwater;
-		Cast<AAlsCharacter_Extend>(GetOwner())->SetGameplayTagInASC(SwimmingStateTag);
-	}
-	else
-	{
-		bIsSwimOnSurface = false;
-		if (IsInWater() && !bJumpingOutOfWater && !IsClimbing())
+		// Reset jump out of water & Update Swimming
+		if (GetGravitySpaceZ(Velocity) < 0.0f && bJumpingOutOfWater == true)
 		{
-			SetMovementMode(MOVE_Swimming);
+			bJumpingOutOfWater = false;
+		}
+	
+		if (IsSwimming() && WaterBodyComponents.Num() > 0)
+		{
+			bIsSwimOnSurface = GetImmerseDepth() <= GetMovementSettingsExtendSafe()->SwimmingSettings.SwimOnSurfaceDepth;
+			// Update swimming state.
+			const FGameplayTag SwimmingStateTag = bIsSwimOnSurface ? AlsSwimmingStateTags::Surface : AlsSwimmingStateTags::Underwater;
+			Cast<AAlsCharacter_Extend>(GetOwner())->SetGameplayTagInASC(SwimmingStateTag);
+		}
+		else
+		{
+			bIsSwimOnSurface = false;
+			if (IsInWater() && !bJumpingOutOfWater && !IsClimbing())
+			{
+				SetMovementMode(MOVE_Swimming);
 			
-			//reset wants to jump out of water after entering swimming
-			bWantsToJumpOutOfWater = false;
+				//reset wants to jump out of water after entering swimming
+				bWantsToJumpOutOfWater = false;
+			}
 		}
 	}
 
@@ -1916,44 +1920,48 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 	{
 		SetMovementMode(MOVE_Custom, CMOVE_Gliding);
 	}
-	
-	// Update free climbing
-	if (bWantsToClimb && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
-	{
-		SetMovementMode(MOVE_Custom, CMOVE_FreeClimb);
-	}
-	if (IsClimbing())
-	{
-		if (bSwimToClimb && (WaterBodyComponents.Num() == 0 || GetGravitySpaceZ(Acceleration) < 0))
-		{
-			bSwimToClimb = false;
-		}
-		//Climb check
-		bool bAllCollided;
-		SweepAndStoreWallHits(CurrentWallHits, VelocityWallHit, bAllCollided, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetForwardVector());
-	}
-	else if (Acceleration.Length() > 1.0f &&
-		!IsCrouching() &&
-		!CurrentRootMotion.HasVelocity() &&
-		IsMovingOnGround())
-	{
-		float DefaultStandRadius;
-		float DefaultStandHalfHeight;
-		GetDefaultScaledCapsule(DefaultStandHalfHeight, DefaultStandRadius);
-		if (IsFacingSurface(UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector(), DefaultStandHalfHeight, DefaultStandRadius))
-		{
-			float AccelHorDegree;
-			bool bCanStartClimbing = CanStartClimbing(AccelHorDegree, CurrentWallHits, VelocityWallHit, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetForwardVector());
-			StartClimbingTimer(AccelHorDegree, DeltaSeconds, bCanStartClimbing);
-		}
-	}
 
-	// Update can climb down(Only local player.)
-	if (CharacterOwner->IsLocallyControlled() && !CharacterOwner->IsBotControlled())
+	// Bots are not able to free climb.
+	if (GetPawnOwner()->IsPlayerControlled())
 	{
-		FVector ClimbDownNull_A;
-		FRotator ClimbDownNull_B;
-		CheckClimbDownLedge(ClimbDownNull_A, ClimbDownNull_A, ClimbDownNull_B, bCanClimbDownLedge);
+		// Update free climbing
+		if (bWantsToClimb && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+		{
+			SetMovementMode(MOVE_Custom, CMOVE_FreeClimb);
+		}
+		if (IsClimbing())
+		{
+			if (bSwimToClimb && (WaterBodyComponents.Num() == 0 || GetGravitySpaceZ(Acceleration) < 0))
+			{
+				bSwimToClimb = false;
+			}
+			//Climb check
+			bool bAllCollided;
+			SweepAndStoreWallHits(CurrentWallHits, VelocityWallHit, bAllCollided, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetForwardVector());
+		}
+		else if (Acceleration.Length() > 1.0f &&
+			!IsCrouching() &&
+			!CurrentRootMotion.HasVelocity() &&
+			IsMovingOnGround())
+		{
+			float DefaultStandRadius;
+			float DefaultStandHalfHeight;
+			GetDefaultScaledCapsule(DefaultStandHalfHeight, DefaultStandRadius);
+			if (IsFacingSurface(UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetUpVector(), UpdatedComponent->GetForwardVector(), DefaultStandHalfHeight, DefaultStandRadius))
+			{
+				float AccelHorDegree;
+				bool bCanStartClimbing = CanStartClimbing(AccelHorDegree, CurrentWallHits, VelocityWallHit, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetForwardVector());
+				StartClimbingTimer(AccelHorDegree, DeltaSeconds, bCanStartClimbing);
+			}
+		}
+
+		// Update can climb down(Only local player.)
+		if (GetPawnOwner()->IsLocallyControlled())
+		{
+			FVector ClimbDownNull_A;
+			FRotator ClimbDownNull_B;
+			CheckClimbDownLedge(ClimbDownNull_A, ClimbDownNull_A, ClimbDownNull_B, bCanClimbDownLedge);
+		}
 	}
 
 	// Check landing when flying
