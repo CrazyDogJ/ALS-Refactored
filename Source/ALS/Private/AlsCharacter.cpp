@@ -1879,6 +1879,12 @@ float AAlsCharacter::CalculateGroundedMovingRotationInterpolationHalfLife() cons
 
 void AAlsCharacter::ApplyRotationYawSpeedAnimationCurve(const float DeltaTime)
 {
+	// Avoid invalid anim instance crash.
+	if (!GetMesh() || !GetMesh()->GetAnimInstance())
+	{
+		return;
+	}
+	
 	const auto DeltaYawAngle{GetMesh()->GetAnimInstance()->GetCurveValue(UAlsConstants::RotationYawSpeedCurveName()) * DeltaTime};
 	if (FMath::Abs(DeltaYawAngle) > UE_SMALL_NUMBER)
 	{
