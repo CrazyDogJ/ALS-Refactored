@@ -1142,7 +1142,7 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	TArray<FHitResult> InClimbWallHits;
 	FHitResult InVelocityWallHit;
 	float NoUse;
-	if (!CanStartClimbing(NoUse, InClimbWallHits, InVelocityWallHit, CheckStartClimbLoc, CheckStartClimbNormal))
+	if (!CanStartClimbing(NoUse, InClimbWallHits, InVelocityWallHit, CheckStartClimbLoc, CheckStartClimbNormal, true))
 	{
 		return;
 	}
@@ -1346,7 +1346,7 @@ bool UAlsCharacterMovementComponent_Extend::IsClimbing() const
 	return MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_FreeClimb;
 }
 
-bool UAlsCharacterMovementComponent_Extend::CanStartClimbing(float& HorizontalAccelerationDegrees, TArray<FHitResult>& InCurrentWallHits, FHitResult& InVelocityWallHit, const FVector& CompLoc, const FVector& CompForwardVec) const
+bool UAlsCharacterMovementComponent_Extend::CanStartClimbing(float& HorizontalAccelerationDegrees, TArray<FHitResult>& InCurrentWallHits, FHitResult& InVelocityWallHit, const FVector& CompLoc, const FVector& CompForwardVec, const bool bSkipEyeTrace) const
 {
 	// Check movement mode
 	if (IsClimbing() || (!bIsSwimOnSurface && IsSwimming()))
@@ -1381,7 +1381,7 @@ bool UAlsCharacterMovementComponent_Extend::CanStartClimbing(float& HorizontalAc
 	float DefaultHalfHeight;
 	float DefaultRadius;
 	GetDefaultScaledCapsule(DefaultHalfHeight, DefaultRadius);
-	if (IsFacingSurface(CompLoc, -GetGravityDirection(), CompForwardVec, DefaultHalfHeight, DefaultRadius) &&
+	if (bSkipEyeTrace ? true : IsFacingSurface(CompLoc, -GetGravityDirection(), CompForwardVec, DefaultHalfHeight, DefaultRadius) &&
 		HorizontalForwardDegrees <= GetMovementSettingsExtendSafe()->ClimbingSettings.MinHorizontalDegreesToStartClimbing &&
 		VerticalDegrees <= 90 - GetWalkableFloorAngle() &&
 		!bIsCeiling &&

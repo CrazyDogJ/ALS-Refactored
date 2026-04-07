@@ -309,6 +309,20 @@ void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag& Pre
 {
 	Super::NotifyLocomotionActionChanged(PreviousLocomotionAction);
 
+	if (LocomotionAction == AlsLocomotionActionTags::NoMovement)
+	{
+		if (GetController())
+		{
+			GetController()->SetIgnoreMoveInput(true);
+		}
+	}
+	else
+	{
+		if (GetController())
+		{
+			GetController()->SetIgnoreMoveInput(false);
+		}
+	}
 	if (LocomotionAction == AlsLocomotionActionTags::AttackCombo)
 	{
 		GetCharacterMovement()->SetMovementMode(MOVE_Flying);
@@ -918,6 +932,24 @@ void AAlsCharacter_Extend::SwingMoveUpDown(float UpDown)
 	if (MovementComponent_Extend->MovementMode == MOVE_Custom && MovementComponent_Extend->CustomMovementMode == CMOVE_RopeSwing)
 	{
 		AddMovementInput(FVector(0,0,UpDown), 1.0f);
+	}
+}
+
+void AAlsCharacter_Extend::ChangeNoMovementState(bool bNoMove)
+{
+	if (bNoMove)
+	{
+		if (LocomotionAction != AlsLocomotionActionTags::NoMovement)
+		{
+			SetLocomotionAction(AlsLocomotionActionTags::NoMovement);
+		}
+	}
+	else
+	{
+		if (LocomotionAction == AlsLocomotionActionTags::NoMovement)
+		{
+			SetLocomotionAction(FGameplayTag::EmptyTag);
+		}
 	}
 }
 

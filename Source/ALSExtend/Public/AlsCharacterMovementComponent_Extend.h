@@ -245,7 +245,7 @@ public:
 	bool IsClimbing() const;
 	
 	bool CanStartClimbing(float& HorizontalAccelerationDegrees, TArray<FHitResult>& InCurrentWallHits, FHitResult& InVelocityWallHit, const
-	                      FVector& CompLoc, const FVector& CompForwardVec) const;
+	                      FVector& CompLoc, const FVector& CompForwardVec, const bool bSkipEyeTrace = false) const;
 
 	UFUNCTION(BlueprintCallable, Category = "Character Movement: Climbing")
 	bool CheckCanStartClimbing(const FVector CompLoc, const FVector CompForwardVec);

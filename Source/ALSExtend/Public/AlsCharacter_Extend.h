@@ -265,6 +265,10 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SwingMoveUpDown(float UpDown);
 	//Swing end;
+
+	/** You can call change no move action by logic, but not recommend to do it! */
+	UFUNCTION(BlueprintCallable)
+	void ChangeNoMovementState(bool bNoMove);
 	
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Player State Rep")
 	void K2_OnPlayerStateRep();
