@@ -11,6 +11,8 @@
 #include "MotionWarpingComponent.h"
 #include "AlsCharacter_Extend.generated.h"
 
+class UGameplayEffect;
+
 USTRUCT(BlueprintType)
 struct FClimbDownParams
 {
@@ -92,6 +94,13 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character")
 	float LastRagdollDamageTime = 0.0f;
 	// Ragdoll Damage end
+
+public:
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Gameplay Ability")
+	TSubclassOf<UGameplayEffect> FallDamageGeClass;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Gameplay Ability")
+	TSubclassOf<UGameplayEffect> RagdollDamageGeClass;
 #pragma endregion
 
 #pragma region Functions

@@ -16,7 +16,6 @@
 #include "Settings/AlsCharacterSettings.h"
 #include "Utility/AlsGameplayTags_Extend.h"
 #include "Utility/AlsConstants.h"
-#include "Utility/AlsDamageType.h"
 #include "Utility/AlsVector.h"
 
 void AAlsCharacter_Extend::OnConstruction(const FTransform& Transform)
@@ -1010,9 +1009,10 @@ void AAlsCharacter_Extend::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* 
 	{
 		return;
 	}
-	
-	UGameplayStatics::ApplyDamage(this, FMath::Floor(Damage), GetController(), OtherActor, UAlsDamageType_Ragdoll::StaticClass());
 
+	auto Context = GetAbilitySystemComponent()->MakeEffectContext();
+	Context.AddInstigator(GetController(), OtherActor);
+	GetAbilitySystemComponent()->BP_ApplyGameplayEffectToSelf(RagdollDamageGeClass, FMath::Floor(Damage), Context);
 	LastRagdollDamageTime = CurrentTime;
 } 
 	
@@ -1069,7 +1069,7 @@ void AAlsCharacter_Extend::SetGameplayTagInASC(const FGameplayTag& AlsTag, const
 	
 	const auto ParentTagChildren = UGameplayTagsManager::Get().RequestGameplayTagChildren(ParentTag);
 	const auto FilteredChildren = ParentTagChildren.Filter(GetAbilitySystemComponent()->GetOwnedGameplayTags());
-	if (!FilteredChildren.IsEmpty())
+	if (!FilteredChildren.IsEmpty() && GetAbilitySystemComponent()->HasAnyMatchingGameplayTags(FilteredChildren))
 	{
 		UAbilitySystemBlueprintLibrary::RemoveLooseGameplayTags(this, FilteredChildren, bInit);
 	}
@@ -1428,8 +1428,11 @@ void AAlsCharacter_Extend::Landed(const FHitResult& Hit)
 	{
 		return;
 	}
+	
 	// Apply land damage.
-	UGameplayStatics::ApplyDamage(this, Damage, GetController(), Hit.GetActor(), UAlsDamageType_Fall::StaticClass());
+	auto Context = GetAbilitySystemComponent()->MakeEffectContext();
+	Context.AddInstigator(GetController(), Hit.GetActor());
+	GetAbilitySystemComponent()->BP_ApplyGameplayEffectToSelf(FallDamageGeClass, Damage, Context);
 }
 
 void AAlsCharacter_Extend::NotifyViewModeChanged(const FGameplayTag& PreviousViewMode)
