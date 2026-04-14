@@ -3,6 +3,8 @@
 
 #include "AlsCharacterMovementComponent_Extend.h"
 
+#include "AbilitySystemComponent.h"
+#include "AlsAttributeSet.h"
 #include "AlsCharacter_Extend.h"
 #include "Utility/CustomMovementMode.h"
 #include "WaterBodyActor.h"
@@ -168,8 +170,10 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 	const FVector Delta = WaterInfoForSwim.WaterVelocity * GetMovementSettingsExtendSafe()->SwimmingSettings.WaterVelocityForceMultiplier * deltaTime;
 	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
 	
-	// Mantle and step on land
-	if (Acceleration.Length() > 1.0f && Cast<AAlsCharacter_Extend>(CharacterOwner)->StartMantlingSwimming())
+	// Swim on surface and try mantling, mantle and step on land.
+	if (bIsSwimOnSurface &&
+		Acceleration.Length() > 1.0f &&
+		Cast<AAlsCharacter_Extend>(CharacterOwner)->StartMantlingSwimming())
 	{
 		return;
 	}
@@ -378,6 +382,16 @@ void UAlsCharacterMovementComponent_Extend::UpdateWaterInfoForSwim()
 		
 		WaterInfoForSwim = FWaterInfoForSwim(HighestPlaneLocation, HighestPlaneNormal, HighestSurfacePosition, BlendedVelocity);
 	}
+}
+
+UAbilitySystemComponent* UAlsCharacterMovementComponent_Extend::GetAbilitySystemComponent() const
+{
+	if (const auto Extend = Cast<AAlsCharacter_Extend>(GetCharacterOwner()))
+	{
+		return Extend->GetAbilitySystemComponent();
+	}
+
+	return nullptr;
 }
 
 TArray<UWaterBodyComponent*> UAlsCharacterMovementComponent_Extend::GetWaterBodyComponents() const
@@ -1027,6 +1041,22 @@ void UAlsCharacterMovementComponent_Extend::StopClimbDashing()
 	Cast<AAlsCharacter_Extend>(GetCharacterOwner())->K2_ExitClimbDash();
 	CurrentClimbDashTime = 0.f;
 	ClimbDashDirection = FVector::ZeroVector;
+}
+
+void UAlsCharacterMovementComponent_Extend::SetMovementSettingsExtend(UAlsMovementSettings_Extend* InSettings)
+{
+	MovementSettings_Extend = InSettings;
+
+	// Update const movement speed.
+	if (const auto ASC = GetAbilitySystemComponent())
+	{
+		if (MovementSettings_Extend)
+		{
+			ASC->SetNumericAttributeBase(UAlsAttributeSet::GetClimbSpeedAttribute(), MovementSettings_Extend->ClimbingSettings.MaxClimbingSpeed);
+			ASC->SetNumericAttributeBase(UAlsAttributeSet::GetGlideSpeedAttribute(), MovementSettings_Extend->GlidingSettings.MaxGlideSpeed);
+			ASC->SetNumericAttributeBase(UAlsAttributeSet::GetSlideSpeedAttribute(), MovementSettings_Extend->SlidingSettings.MinSlideSpeed);
+		}
+	}
 }
 
 UAlsMovementSettings_Extend* UAlsCharacterMovementComponent_Extend::GetMovementSettingsExtendSafe() const
@@ -1757,28 +1787,67 @@ void UAlsCharacterMovementComponent_Extend::PhysCustom(float deltaTime, int32 It
 	}
 }
 
+void UAlsCharacterMovementComponent_Extend::RefreshGroundedMovementSettings()
+{
+	Super::RefreshGroundedMovementSettings();
+
+	// Update basic walk speed.
+	if (const auto ASC = GetAbilitySystemComponent())
+	{
+		ASC->SetNumericAttributeBase(UAlsAttributeSet::GetWalkSpeedAttribute(), MaxWalkSpeed);
+		ASC->SetNumericAttributeBase(UAlsAttributeSet::GetCrouchSpeedAttribute(), MaxWalkSpeedCrouched);
+
+		// Update jump z velocity.
+		bool bSuccess;
+		JumpZVelocity = ASC->GetGameplayAttributeValue(UAlsAttributeSet::GetJumpSpeedAttribute(), bSuccess);
+	}
+}
+
 float UAlsCharacterMovementComponent_Extend::GetMaxSpeed() const
 {
+	// Update gait needed speed.
+	if (const auto ASC = GetAbilitySystemComponent())
+	{
+		if (MovementSettings_Extend)
+		{
+			if (MaxAllowedGait == AlsGaitTags::Sprinting)
+			{
+				ASC->SetNumericAttributeBase(UAlsAttributeSet::GetSwimSpeedAttribute(), MovementSettings_Extend->SwimmingSettings.SprintSpeed);
+				ASC->SetNumericAttributeBase(UAlsAttributeSet::GetFlySpeedAttribute(), MovementSettings_Extend->FlyingSettings.FlyFasterMaxSpeed);
+			}
+			else
+			{
+				ASC->SetNumericAttributeBase(UAlsAttributeSet::GetSwimSpeedAttribute(), MovementSettings_Extend->SwimmingSettings.RunSpeed);
+				ASC->SetNumericAttributeBase(UAlsAttributeSet::GetFlySpeedAttribute(), MovementSettings_Extend->FlyingSettings.MaxFlySpeed);
+			}
+		}
+	}
+	
+	bool bFound;
+	const auto ASC = GetAbilitySystemComponent();
+	// Invalid asc.
+	if (!ASC)
+	{
+		return Super::GetMaxSpeed();
+	}
+	
 	if (IsClimbing())
 	{
-		
 		auto AngleDegree = FVector::DotProduct(CurrentClimbingNormal, -GetGravityDirection());
-		return GetMovementSettingsExtendSafe()->ClimbingSettings.MaxClimbingSpeed + AngleDegree * GetMovementSettingsExtendSafe()->ClimbingSettings.SlopeSpeedMultiplier;
+		const auto ClimbSpeedAttribute = ASC->GetGameplayAttributeValue(UAlsAttributeSet::GetClimbSpeedAttribute(), bFound);
+		return ClimbSpeedAttribute + AngleDegree * GetMovementSettingsExtendSafe()->ClimbingSettings.SlopeSpeedMultiplier;
 	}
 	
 	if (IsSliding())
 	{
-		return GetMovementSettingsExtendSafe()->SlidingSettings.MaxSlideSpeed;
+		const auto SlideSpeedAttribute = ASC->GetGameplayAttributeValue(UAlsAttributeSet::GetSlideSpeedAttribute(), bFound);
+		return SlideSpeedAttribute;
 	}
 	
 	if (IsSwimming())
 	{
-		float MaxSpeed = GetMovementSettingsExtendSafe()->SwimmingSettings.RunSpeed;
-		if (MaxAllowedGait == AlsGaitTags::Sprinting)
-		{
-			MaxSpeed = GetMovementSettingsExtendSafe()->SwimmingSettings.SprintSpeed;
-		}
-		return MaxSpeed;
+		const auto SwimSpeedAttribute = ASC->GetGameplayAttributeValue(UAlsAttributeSet::GetSwimSpeedAttribute(), bFound);
+		return SwimSpeedAttribute;
 	}
 
 	if (IsWalking())
@@ -1793,23 +1862,22 @@ float UAlsCharacterMovementComponent_Extend::GetMaxSpeed() const
 			FaceSlopeAmount = FVector::DotProduct(FVector(Acceleration.GetSafeNormal2D()),FVector(Hit.HitResult.ImpactNormal.GetSafeNormal2D()));
 		}
 		const float SlopeAlpha = FaceSlopeAmount > 0 ? SlopeDownwardAlpha : SlopeUpwardAlpha;
-		
-		return IsCrouching() ? MaxWalkSpeedCrouched : (MaxWalkSpeed + SlopeAlpha * SlopeAngleDot * MaxSpeedSlopeBaseValue * FaceSlopeAmount);
+
+		const auto WalkSpeedAttribute = ASC->GetGameplayAttributeValue(UAlsAttributeSet::GetWalkSpeedAttribute(), bFound);
+		const auto CrouchSpeedAttribute = ASC->GetGameplayAttributeValue(UAlsAttributeSet::GetCrouchSpeedAttribute(), bFound);
+		return IsCrouching() ? CrouchSpeedAttribute : (WalkSpeedAttribute + SlopeAlpha * SlopeAngleDot * MaxSpeedSlopeBaseValue * FaceSlopeAmount);
 	}
 
 	if (IsFlying())
 	{
-		float MaxSpeed = GetMovementSettingsExtendSafe()->FlyingSettings.MaxFlySpeed;
-		if (MaxAllowedGait == AlsGaitTags::Sprinting)
-		{
-			MaxSpeed = GetMovementSettingsExtendSafe()->FlyingSettings.FlyFasterMaxSpeed;
-		}
-		return MaxSpeed;
+		const auto FlySpeedAttribute = ASC->GetGameplayAttributeValue(UAlsAttributeSet::GetFlySpeedAttribute(), bFound);
+		return FlySpeedAttribute;
 	}
 
 	if (IsGliding())
 	{
-		return FMath::Max(GetMovementSettingsExtendSafe()->GlidingSettings.MaxGlideSpeed, FVector2D(Velocity).Length());
+		const auto GlideSpeedAttribute = ASC->GetGameplayAttributeValue(UAlsAttributeSet::GetGlideSpeedAttribute(), bFound);
+		return FMath::Max(GlideSpeedAttribute, FVector2D(Velocity).Length());
 	}
 	
 	return Super::GetMaxSpeed();

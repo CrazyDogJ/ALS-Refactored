@@ -49,12 +49,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings|Als Character")
 	TObjectPtr<UAlsCapsuleSizeSettings> CapsuleSizeSettings;
 	
-	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character", Transient)
-	TObjectPtr<UAlsMovementSettings> RuntimeMovementSettings;
-
-	UPROPERTY(BlueprintReadOnly, Category = "State|Als Character", Transient)
-	TObjectPtr<UAlsMovementSettings_Extend> RuntimeMovementSettings_Extend;
-	
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = Movement)
 	TObjectPtr<UAlsCameraComponent> Camera;
 
@@ -106,10 +100,8 @@ public:
 #pragma region Functions
 protected:
 	virtual void OnConstruction(const FTransform& Transform) override;
-	
+
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo) override;
-	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 
 	// Fix crouch half height adjust Start
@@ -312,6 +304,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void SetCapsuleSizeSettings(UAlsCapsuleSizeSettings* InCapsuleSizeSettings);
+
+	UFUNCTION(BlueprintCallable)
+	void SetMovementSettingsExtend(UAlsMovementSettings_Extend* InMovementExtendSettings);
 	
 	float GetScaledRadius(float UnscaledRadius) const;
 	float GetScaledHaleHeight(float UnscaledHalfHeight) const;

@@ -209,7 +209,7 @@ public:
 	float GetGaitAmount() const;
 
 public:
-	void RefreshGroundedMovementSettings();
+	virtual void RefreshGroundedMovementSettings();
 
 public:
 	void SetMovementModeLocked(bool bNewMovementModeLocked);

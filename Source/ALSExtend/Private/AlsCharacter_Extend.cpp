@@ -8,6 +8,7 @@
 #include "AIController.h"
 #include "AlsAnimationInstance.h"
 #include "AlsAnimationInstance_Extend.h"
+#include "AlsAttributeSet.h"
 #include "AlsCharacterMovementComponent_Extend.h"
 #include "Utility/CustomMovementMode.h"
 #include "Components/CapsuleComponent.h"
@@ -35,30 +36,6 @@ void AAlsCharacter_Extend::CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInf
 	}
 	
 	Super::CalcCamera(DeltaTime, ViewInfo);
-}
-
-void AAlsCharacter_Extend::BeginPlay()
-{
-	Super::BeginPlay();
-	
-	// Runtime settings
-	// RuntimeMovementSettings = DuplicateObject(MovementSettings, this);
-	// MovementComponent_Extend->MovementSettings = RuntimeMovementSettings;
-
-	RuntimeMovementSettings_Extend = DuplicateObject(MovementSettings_Extend, this);
-	MovementComponent_Extend->MovementSettings_Extend = RuntimeMovementSettings_Extend;
-}
-
-void AAlsCharacter_Extend::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	// Runtime settings
-	// RuntimeMovementSettings = nullptr;
-	// MovementComponent_Extend->MovementSettings = nullptr;
-
-	RuntimeMovementSettings_Extend = nullptr;
-	MovementComponent_Extend->MovementSettings_Extend = nullptr;
-	
-	Super::EndPlay(EndPlayReason);
 }
 
 void AAlsCharacter_Extend::Tick(float DeltaSeconds)
@@ -227,7 +204,7 @@ FGameplayTag AAlsCharacter_Extend::CalculateActualGait(const FGameplayTag& MaxAl
 {
 	if (LocomotionMode == AlsLocomotionModeTags::Swimming)
 	{
-		if (LocomotionState.Speed < RuntimeMovementSettings_Extend->SwimmingSettings.RunSpeed + 10.0f
+		if (LocomotionState.Speed < MovementSettings_Extend->SwimmingSettings.RunSpeed + 10.0f
 			|| MaxAllowedGait != AlsGaitTags::Sprinting)
 		{
 			return AlsGaitTags::Running;
@@ -391,12 +368,17 @@ bool AAlsCharacter_Extend::IsRollingAllowedToStart(const UAnimMontage* Montage) 
 
 void AAlsCharacter_Extend::PostInitializeComponents()
 {
-	// Make sure the mesh and animation blueprint are ticking after the character so they can access the most up-to-date character state.
-	GetMesh()->AddTickPrerequisiteActor(this);
+	Super::PostInitializeComponents();
 
-	MovementComponent_Extend->OnPhysicsRotation.AddUObject(this, &ThisClass::CharacterMovement_OnPhysicsRotation);
+	// Init attribute set.
+	if (const auto ASC = GetAbilitySystemComponent())
+	{
+		ASC->InitStats(UAlsAttributeSet::StaticClass(), nullptr);
+		// Jump speed attribute.
+		ASC->SetNumericAttributeBase(UAlsAttributeSet::GetJumpSpeedAttribute(), GetCharacterMovement()->JumpZVelocity);
+	}
 	
-	ACharacter::PostInitializeComponents();
+	MovementComponent_Extend->SetMovementSettingsExtend(MovementSettings_Extend);
 }
 
 void AAlsCharacter_Extend::RefreshRotationMode()
@@ -490,12 +472,12 @@ void AAlsCharacter_Extend::MulticastClimbDownLedge_Implementation()
 
 void AAlsCharacter_Extend::OnClimbDownMontageBlendOut(UAnimMontage* Montage, bool bInterrupted)
 {
-	if (!RuntimeMovementSettings_Extend)
+	if (!MovementSettings_Extend)
 	{
 		return;
 	}
 	
-	if (Montage != RuntimeMovementSettings_Extend->ClimbingSettings.ClimbDownMontage)
+	if (Montage != MovementSettings_Extend->ClimbingSettings.ClimbDownMontage)
 	{
 		return;
 	}
@@ -509,7 +491,7 @@ void AAlsCharacter_Extend::OnClimbDownMontageBlendOut(UAnimMontage* Montage, boo
 void AAlsCharacter_Extend::ClimbDownLedgeImplementation()
 {
 	// Init Check
-	if (!RuntimeMovementSettings_Extend)
+	if (!MovementSettings_Extend)
 	{
 		return;
 	}
@@ -544,18 +526,18 @@ void AAlsCharacter_Extend::ClimbDownLedgeImplementation()
 		*Params.Component->GetName(), *Params.SocketName.ToString(), *Params.Transform_A.ToString(), *Params.Transform_B.ToString())
 
 	// Execute
-	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(RuntimeMovementSettings_Extend->ClimbingSettings.WarpTarget_A,
+	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(MovementSettings_Extend->ClimbingSettings.WarpTarget_A,
 													   Params.Component, Params.SocketName, true,
 													   Params.Transform_A.GetLocation(), Params.Transform_A.GetRotation().Rotator());
 
-	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(RuntimeMovementSettings_Extend->ClimbingSettings.WarpTarget_B,
+	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(MovementSettings_Extend->ClimbingSettings.WarpTarget_B,
 													   Params.Component, Params.SocketName, true,
 													   Params.Transform_B.GetLocation(), Params.Transform_B.GetRotation().Rotator());
 
 	MovementComponent_Extend->SetMovementMode(MOVE_Flying);
 	
-	GetMesh()->GetAnimInstance()->Montage_Play(RuntimeMovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
-	auto Delegate = GetMesh()->GetAnimInstance()->Montage_GetBlendingOutDelegate(RuntimeMovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
+	GetMesh()->GetAnimInstance()->Montage_Play(MovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
+	auto Delegate = GetMesh()->GetAnimInstance()->Montage_GetBlendingOutDelegate(MovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
 	Delegate->BindUFunction(this, "OnClimbDownMontageBlendOut");
 	SetLocomotionAction(AlsLocomotionActionTags::ClimbDownLedge);
 }
@@ -862,7 +844,7 @@ void AAlsCharacter_Extend::RefreshGlidingRotation(float DeltaTime)
 		return;
 	}
 
-	SetRotationSmooth(LocomotionState.VelocityYawAngle, DeltaTime, RuntimeMovementSettings_Extend->GlidingSettings.GlideRotationInterpSpeed);
+	SetRotationSmooth(LocomotionState.VelocityYawAngle, DeltaTime, MovementSettings_Extend->GlidingSettings.GlideRotationInterpSpeed);
 }
 
 void AAlsCharacter_Extend::UpdateMeshRelativeLocation(float HalfHeight, bool bShouldMoveComp /** = false*/)
@@ -1031,8 +1013,8 @@ void AAlsCharacter_Extend::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActo
 		bool bCanStartClimbing = comp->CanStartClimbing(AccelHorDegree, comp->CurrentWallHits, comp->VelocityWallHit,
 			comp->UpdatedComponent->GetComponentLocation(), comp->UpdatedComponent->GetForwardVector());
 
-		const float MinHorizontalDegreesToStartClimbing = RuntimeMovementSettings_Extend ?
-			RuntimeMovementSettings_Extend->ClimbingSettings.MinHorizontalDegreesToStartClimbing : 50.0f;
+		const float MinHorizontalDegreesToStartClimbing = MovementSettings_Extend ?
+			MovementSettings_Extend->ClimbingSettings.MinHorizontalDegreesToStartClimbing : 50.0f;
 		if (AccelHorDegree <= MinHorizontalDegreesToStartClimbing && bCanStartClimbing)
 		{
 			K2_AutoTryClimb();
@@ -1112,6 +1094,15 @@ void AAlsCharacter_Extend::SetCapsuleSizeSettings(UAlsCapsuleSizeSettings* InCap
 	CapsuleSizeSettings = InCapsuleSizeSettings;
 	// TODO : May cause issue.
 	InitCapsuleSize();
+}
+
+void AAlsCharacter_Extend::SetMovementSettingsExtend(UAlsMovementSettings_Extend* InMovementExtendSettings)
+{
+	if (InMovementExtendSettings)
+	{
+		MovementSettings_Extend = InMovementExtendSettings;
+		MovementComponent_Extend->SetMovementSettingsExtend(MovementSettings_Extend);
+	}
 }
 
 float AAlsCharacter_Extend::GetScaledRadius(float UnscaledRadius) const

@@ -3,6 +3,8 @@
 #include "AlsCharacter.h"
 #include "DrawDebugHelpers.h"
 #include "NiagaraFunctionLibrary.h"
+#include "WaterBodyActor.h"
+#include "WaterBodyExclusionVolume.h"
 #include "Animation/AnimInstance.h"
 #include "Components/AudioComponent.h"
 #include "Components/DecalComponent.h"
@@ -118,6 +120,17 @@ void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimS
 	FCollisionQueryParams QueryParameters{__FUNCTION__, true, Mesh->GetOwner()};
 	QueryParameters.bReturnPhysicalMaterial = true;
 
+	// Should ignore water body actor.
+	TArray<AActor*> ExcludeActors;
+	Mesh->GetOwner()->GetOverlappingActors(ExcludeActors, AWaterBodyExclusionVolume::StaticClass());
+	const bool bInExclude = ExcludeActors.Num() > 0;
+	TArray<AActor*> WaterActors;
+	Mesh->GetOwner()->GetOverlappingActors(WaterActors, AWaterBody::StaticClass());
+	if (bInExclude)
+	{
+		QueryParameters.AddIgnoredActors(WaterActors);
+	}
+	
 	FHitResult FootstepHit;
 	if (!World->LineTraceSingleByChannel(FootstepHit, FootTransform.GetLocation(),
 	                                     FootTransform.GetLocation() - FootZAxis *

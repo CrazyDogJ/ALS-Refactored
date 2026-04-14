@@ -228,7 +228,7 @@ struct ALSEXTEND_API FAlsLandDamageSettings
 /**
  * 
  */
-UCLASS()
+UCLASS(BlueprintType)
 class ALSEXTEND_API UAlsMovementSettings_Extend : public UDataAsset
 {
 	GENERATED_BODY()

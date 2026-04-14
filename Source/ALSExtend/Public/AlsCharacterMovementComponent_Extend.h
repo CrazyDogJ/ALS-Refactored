@@ -11,6 +11,8 @@
 #include "Utility/CustomMovementMode.h"
 #include "AlsCharacterMovementComponent_Extend.generated.h"
 
+class UAlsAttributeSet;
+class UAbilitySystemComponent;
 class UAlsCapsuleSizeSettings;
 class AAlsCharacter_Extend;
 
@@ -42,6 +44,7 @@ private:
 
 	void UpdateWaterInfoForSwim();
 
+	UAbilitySystemComponent* GetAbilitySystemComponent() const;
 	void GetDefaultUnscaledCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius) const;
 	void GetDefaultScaledCapsule(float& OutCapsuleHalfHeight, float& OutCapsuleRadius) const;
 	void GetUnscaledCrouchHalfHeight(float& OutCapsuleHalfHeight) const;
@@ -168,6 +171,7 @@ private:
 	bool ClimbDownToFloor() const;
 	void UpdateClimbDashState(float deltaTime);
 	void StopClimbDashing();
+	void SetMovementSettingsExtend(UAlsMovementSettings_Extend* InSettings);
 	UAlsMovementSettings_Extend* GetMovementSettingsExtendSafe() const;
 	
 public:
@@ -325,6 +329,8 @@ protected:
 
 	virtual void PhysCustom(float deltaTime, int32 Iterations) override;
 
+	virtual void RefreshGroundedMovementSettings() override;
+	
 	virtual float GetMaxSpeed() const override;
 
 	virtual float GetMaxAcceleration() const override;
