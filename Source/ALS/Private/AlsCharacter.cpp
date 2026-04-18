@@ -644,6 +644,8 @@ void AAlsCharacter::OnReplicated_DesiredAiming(const bool bPreviousDesiredAiming
 
 void AAlsCharacter::OnDesiredAimingChanged_Implementation(const bool bPreviousDesiredAiming) {}
 
+bool AAlsCharacter::ShouldForceAiming_Implementation() const { return false; }
+
 void AAlsCharacter::SetDesiredRotationMode(const FGameplayTag& NewDesiredRotationMode)
 {
 	SetDesiredRotationMode(NewDesiredRotationMode, true);
@@ -709,7 +711,7 @@ void AAlsCharacter::NotifyRotationModeChanged(const FGameplayTag& PreviousRotati
 
 void AAlsCharacter::RefreshRotationMode()
 {
-	const auto bAiming{bDesiredAiming || DesiredRotationMode == AlsRotationModeTags::Aiming};
+	const auto bAiming{ShouldForceAiming() ? true : bDesiredAiming || DesiredRotationMode == AlsRotationModeTags::Aiming};
 	const auto bSprinting{AlsCharacterMovement->GetMaxAllowedGait() == AlsGaitTags::Sprinting};
 
 	if (ViewMode == AlsViewModeTags::FirstPerson)

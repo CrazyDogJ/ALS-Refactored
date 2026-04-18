@@ -230,6 +230,9 @@ protected:
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
 	void OnDesiredAimingChanged(bool bPreviousDesiredAiming);
 
+	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	bool ShouldForceAiming() const;
+
 	// Desired Rotation Mode
 
 public:

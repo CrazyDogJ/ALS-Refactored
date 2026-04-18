@@ -35,19 +35,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 	const auto SwimSurfaceZ = Position.Z - Distance;
 	const auto SurfaceDelta = SwimSurfaceZ - CompLoc.Z;
 	float OriginalAccelZ = Acceleration.Z;
-	bool bLimitedUpAccel = false;
-
-	// Swim on surface clamp.
-	if (bIsSwimOnSurface)
-	{
-		// Don't update velocity.z when character wants to swim down.
-		if (Acceleration.Z >= 0.0f)
-		{
-			Velocity.Z = SurfaceDelta;
-		}
-		bLimitedUpAccel = (Acceleration.Z > 0.f);
-		Acceleration.Z = FMath::Min<FVector::FReal>(0.0f, Acceleration.Z);
-	}
+	bool bLimitedUpAccel = Acceleration.Z > 0.f;
 
 	Iterations++;
 	FVector OldLocation = UpdatedComponent->GetComponentLocation();
@@ -60,6 +48,19 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 
 	ApplyRootMotionToVelocity(deltaTime);
 
+	// Swim on surface clamp.
+	if (bIsSwimOnSurface)
+	{
+		if (Acceleration.Z >= -0.1f)
+		{
+			const auto Length = Velocity.Length();
+			FVector Projected = FVector::VectorPlaneProject(Velocity, WaterInfoForSwim.WaterPlaneNormal);
+			Projected = Projected.GetSafeNormal() * Length;
+			Velocity = Projected;
+			Velocity.Z += SurfaceDelta;
+		}
+	}
+	
 	FVector Adjusted = Velocity * deltaTime;
 
 	// Swimming store current touched floor. used to decide should we walk or fall.
@@ -1050,7 +1051,7 @@ void UAlsCharacterMovementComponent_Extend::SetMovementSettingsExtend(UAlsMoveme
 	// Update const movement speed.
 	if (const auto ASC = GetAbilitySystemComponent())
 	{
-		if (MovementSettings_Extend)
+		if (MovementSettings_Extend && ASC->GetAttributeSet(UAlsAttributeSet::StaticClass()))
 		{
 			ASC->SetNumericAttributeBase(UAlsAttributeSet::GetClimbSpeedAttribute(), MovementSettings_Extend->ClimbingSettings.MaxClimbingSpeed);
 			ASC->SetNumericAttributeBase(UAlsAttributeSet::GetGlideSpeedAttribute(), MovementSettings_Extend->GlidingSettings.MaxGlideSpeed);
@@ -1106,13 +1107,24 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	const FVector CompBottomLoc = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetCapsuleBottom();
 	const FVector CompForward = UpdatedComponent->GetForwardVector();
 
-	//2.Check forward wall.
+	//2.Check forward wall
 	const FVector WallCheckLoc = CompLoc + CompForward * DefaultRadius * 2.5;
-	FFindFloorResult FloorResult;
-	FindFloor(CompLoc + CompForward * DefaultRadius * 4.0f, FloorResult, false);
 	FHitResult ForwardWallResult;
 	GetWorld()->SweepSingleByChannel(ForwardWallResult, CompLoc, WallCheckLoc, FQuat::Identity, ECC_Visibility,
 									 FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
+#if WITH_EDITOR
+	if (DebugDrawSwitch)
+	{
+		// Wall check.
+		UAlsDebugUtility::DrawSweepSphere(this, CompLoc, WallCheckLoc, DefaultRadius, FColor::Red);
+	}
+#endif
+	if (ForwardWallResult.bBlockingHit) return;
+
+	//2.5 walkable floor.
+	FFindFloorResult FloorResult;
+	ComputeFloorDist(CompLoc + CompForward * DefaultRadius * 4.0f,
+		DefaultHalfHeight, DefaultHalfHeight, FloorResult, DefaultRadius, nullptr);
 #if WITH_EDITOR
 	if (DebugDrawSwitch)
 	{
@@ -1125,14 +1137,9 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 			DrawDebugPoint(GetWorld(), ImpactPoint, 4, Walkable ? FColor::Green : FColor::Red, false, 0, 0);
 			DrawDebugLine(GetWorld(), ImpactPoint, ImpactPoint + ImpactNormal * 100.0f, Walkable ? FColor::Green : FColor::Red, false, 0, 0);
 		}
-
-		// Wall check.
-		UAlsDebugUtility::DrawSweepSphere(this, CompLoc, WallCheckLoc, DefaultRadius, FColor::Red);
 	}
 #endif
-	if (ForwardWallResult.bBlockingHit
-		|| FloorResult.IsWalkableFloor()
-		)
+	if (FloorResult.IsWalkableFloor())
 	{
 		return;
 	}
@@ -1144,7 +1151,7 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	const FVector LineWallStart = CompBottomLoc + CompForward * AngleBaseDistance + GetGravityDirection() * DownDistance;
 	const FVector LineWallEnd = CompBottomLoc + GetGravityDirection() * DownDistance - CompForward * AngleBaseDistance;
 	const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
-	GetWorld()->LineTraceSingleByChannel(LineWallHit, LineWallStart, LineWallEnd, TraceChannel, ClimbQueryParams);
+	GetWorld()->SweepSingleByChannel(LineWallHit, LineWallStart, LineWallEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
 #if WITH_EDITOR
 	if (DebugDrawSwitch)
 	{
@@ -2435,7 +2442,7 @@ FVector UAlsCharacterMovementComponent_Extend::NewFallVelocity(const FVector& In
 		// Only try to clamp velocity when falling speed is overload.
 		if (FMath::Abs(CurrentVelocityZ) >= MaxGlideDownSpeed)
 		{
-			CurrentVelocityZ = FMath::FInterpTo(CurrentVelocityZ, FMath::Sign(CurrentVelocityZ) * MaxGlideDownSpeed, DeltaTime, GlideInterpSpeed);
+			CurrentVelocityZ = FMath::FInterpTo(CurrentVelocityZ, -MaxGlideDownSpeed, DeltaTime, GlideInterpSpeed);
 			SetGravitySpaceZ(NewFallVelocity, CurrentVelocityZ);
 			return NewFallVelocity;
 		}

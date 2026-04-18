@@ -9,6 +9,7 @@
 #include "Components/AudioComponent.h"
 #include "Components/DecalComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
@@ -120,15 +121,31 @@ void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimS
 	FCollisionQueryParams QueryParameters{__FUNCTION__, true, Mesh->GetOwner()};
 	QueryParameters.bReturnPhysicalMaterial = true;
 
-	// Should ignore water body actor.
-	TArray<AActor*> ExcludeActors;
-	Mesh->GetOwner()->GetOverlappingActors(ExcludeActors, AWaterBodyExclusionVolume::StaticClass());
-	const bool bInExclude = ExcludeActors.Num() > 0;
-	TArray<AActor*> WaterActors;
-	Mesh->GetOwner()->GetOverlappingActors(WaterActors, AWaterBody::StaticClass());
-	if (bInExclude)
+	// Should ignore water body actor when in exclude area.
+	AWaterBodyExclusionVolume* ExclusionVolume = nullptr;
+	TArray<FOverlapResult> OverlapResultsExclude;
+	auto Params = FCollisionObjectQueryParams();
+	Params.AddObjectTypesToQuery(ECC_WorldStatic);
+	Params.AddObjectTypesToQuery(ECC_WorldDynamic);
+	World->OverlapMultiByObjectType(OverlapResultsExclude, FootTransform.GetLocation(), FQuat::Identity, Params, FCollisionShape::MakeSphere(1.0f), QueryParameters);
+
+	for (const auto Itr : OverlapResultsExclude)
 	{
-		QueryParameters.AddIgnoredActors(WaterActors);
+		ExclusionVolume = Cast<AWaterBodyExclusionVolume>(Itr.GetActor());
+		if (IsValid(ExclusionVolume))
+		{
+			break;
+		}
+	}
+	
+	if (IsValid(ExclusionVolume))
+	{
+		TArray<AActor*> WaterBodies;
+		for (auto WaterBody : ExclusionVolume->WaterBodies)
+		{
+			WaterBodies.Add(WaterBody.Get());
+		}
+		QueryParameters.AddIgnoredActors(WaterBodies);
 	}
 	
 	FHitResult FootstepHit;
