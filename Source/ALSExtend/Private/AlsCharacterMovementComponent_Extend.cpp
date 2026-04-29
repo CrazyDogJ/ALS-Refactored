@@ -1099,7 +1099,7 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 		return;
 	}
 
-	//1.Const Variables;
+	//0.5.Const Variables;
 	float DefaultHalfHeight;
 	float DefaultRadius;
 	GetDefaultScaledCapsule(DefaultHalfHeight, DefaultRadius);
@@ -1107,21 +1107,7 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	const FVector CompBottomLoc = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetCapsuleBottom();
 	const FVector CompForward = UpdatedComponent->GetForwardVector();
 
-	//2.Check forward wall
-	const FVector WallCheckLoc = CompLoc + CompForward * DefaultRadius * 2.5;
-	FHitResult ForwardWallResult;
-	GetWorld()->SweepSingleByChannel(ForwardWallResult, CompLoc, WallCheckLoc, FQuat::Identity, ECC_Visibility,
-									 FCollisionShape::MakeSphere(DefaultRadius), ClimbQueryParams);
-#if WITH_EDITOR
-	if (DebugDrawSwitch)
-	{
-		// Wall check.
-		UAlsDebugUtility::DrawSweepSphere(this, CompLoc, WallCheckLoc, DefaultRadius, FColor::Red);
-	}
-#endif
-	if (ForwardWallResult.bBlockingHit) return;
-
-	//2.5 walkable floor.
+	//1. walkable floor.
 	FFindFloorResult FloorResult;
 	ComputeFloorDist(CompLoc + CompForward * DefaultRadius * 4.0f,
 		DefaultHalfHeight, DefaultHalfHeight, FloorResult, DefaultRadius, nullptr);
@@ -1140,6 +1126,16 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	}
 #endif
 	if (FloorResult.IsWalkableFloor())
+	{
+		return;
+	}
+	
+	//2.Check forward wall
+	const FVector WallCheckLoc = CompLoc + CompForward * DefaultRadius * 2.0;
+	float NoUse;
+	TArray<FHitResult> ForwardWallResult;
+	FHitResult ForwardWallVelHit;
+	if (CanStartClimbing(NoUse, ForwardWallResult, ForwardWallVelHit, WallCheckLoc, CompForward, true))
 	{
 		return;
 	}
@@ -1178,7 +1174,6 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 	// Check predict location can climb.
 	TArray<FHitResult> InClimbWallHits;
 	FHitResult InVelocityWallHit;
-	float NoUse;
 	if (!CanStartClimbing(NoUse, InClimbWallHits, InVelocityWallHit, CheckStartClimbLoc, CheckStartClimbNormal, true))
 	{
 		return;
@@ -1709,8 +1704,9 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		bWantsToGlide = false;
 	}
 	
-	// Set back to default half height and radius
-	if (!IsSwimming() || !IsClimbing())
+	// Set back to default half height and radius (Only swimming or climbing)
+	if ((PreviousMovementMode == MOVE_Swimming && !IsSwimming()) ||
+		(PreviousMovementMode == MOVE_Custom && PreviousCustomMode == CMOVE_FreeClimb && !IsClimbing()))
 	{
 		float DefaultHalfHeight;
 		float DefaultRadius;
