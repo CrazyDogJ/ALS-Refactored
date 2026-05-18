@@ -557,6 +557,11 @@ FVector AAlsCharacter_Extend::GetCapsuleBottom()
 
 void AAlsCharacter_Extend::SetCurrentOverlayClass(FName InTag, TSubclassOf<UAnimInstance> InAnimClass)
 {
+	if (!GetMesh())
+	{
+		return;
+	}
+	
 	if (InAnimClass != nullptr)
 	{
 		GetMesh()->LinkAnimGraphByTag(InTag, InAnimClass);

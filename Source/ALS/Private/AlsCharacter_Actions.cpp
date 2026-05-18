@@ -814,6 +814,8 @@ void AAlsCharacter::StartRagdollingImplementation()
 	GetMesh()->BodyInstance.SetUseCCD(true);
 	GetMesh()->SetAllBodiesNotifyRigidBodyCollision(true);
 	GetMesh()->SetSimulatePhysics(true);
+	// Fix ragdoll issue.
+	GetMesh()->ResetAllBodiesSimulatePhysics();
 
 	const auto* PelvisBody{GetMesh()->GetBodyInstance(UAlsConstants::PelvisBoneName())};
 	FVector PelvisLocation;

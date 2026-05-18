@@ -476,8 +476,10 @@ FVector UAlsCameraComponent::CalculateCameraTrace(const FVector& CameraTargetLoc
 	auto TraceResult{TraceEnd};
 
 	FHitResult Hit;
+	FCollisionQueryParams MainTraceParams = {MainTraceTag, false, GetOwner()};
+	MainTraceParams.AddIgnoredActors(GetMoveIgnoreActors());
 	if (GetWorld()->SweepSingleByChannel(Hit, TraceStart, TraceEnd, FQuat::Identity, Settings->ThirdPerson.TraceChannel,
-	                                     CollisionShape, {MainTraceTag, false, GetOwner()}))
+	                                     CollisionShape, MainTraceParams))
 	{
 		if (!Hit.bStartPenetrating)
 		{
@@ -487,8 +489,10 @@ FVector UAlsCameraComponent::CalculateCameraTrace(const FVector& CameraTargetLoc
 		{
 			static const FName AdjustedTraceTag{FString::Printf(TEXT("%hs (Adjusted Trace)"), __FUNCTION__)};
 
+			FCollisionQueryParams AdjustedTraceParams = {AdjustedTraceTag, false, GetOwner()};
+			AdjustedTraceParams.AddIgnoredActors(GetMoveIgnoreActors());
 			GetWorld()->SweepSingleByChannel(Hit, TraceStart, TraceEnd, FQuat::Identity, Settings->ThirdPerson.TraceChannel,
-			                                 CollisionShape, {AdjustedTraceTag, false, GetOwner()});
+			                                 CollisionShape, AdjustedTraceParams);
 			if (Hit.IsValidBlockingHit())
 			{
 				TraceResult = Hit.Location;
@@ -553,8 +557,10 @@ bool UAlsCameraComponent::TryAdjustLocationBlockedByGeometry(FVector& Location, 
 
 	static const FName OverlapMultiTraceTag{FString::Printf(TEXT("%hs (Overlap Multi)"), __FUNCTION__)};
 
+	FCollisionQueryParams OverlapMultiTraceParams = {OverlapMultiTraceTag, false, GetOwner()};
+	OverlapMultiTraceParams.AddIgnoredActors(GetMoveIgnoreActors());
 	if (!GetWorld()->OverlapMultiByChannel(Overlaps, Location, FQuat::Identity, Settings->ThirdPerson.TraceChannel,
-	                                       CollisionShape, {OverlapMultiTraceTag, false, GetOwner()}))
+	                                       CollisionShape, OverlapMultiTraceParams))
 	{
 		return false;
 	}
@@ -612,7 +618,9 @@ bool UAlsCameraComponent::TryAdjustLocationBlockedByGeometry(FVector& Location, 
 
 	static const FName FreeSpaceTraceTag{FString::Printf(TEXT("%hs (Free Space Overlap)"), __FUNCTION__)};
 
+	FCollisionQueryParams FreeSpaceTraceTagParams = {FreeSpaceTraceTag, false, GetOwner()};
+	FreeSpaceTraceTagParams.AddIgnoredActors(GetMoveIgnoreActors());
 	return !GetWorld()->OverlapBlockingTestByChannel(Location, FQuat::Identity, Settings->ThirdPerson.TraceChannel,
 	                                                 FCollisionShape::MakeSphere(Settings->ThirdPerson.TraceRadius * MeshScale),
-	                                                 {FreeSpaceTraceTag, false, GetOwner()});
+	                                                 FreeSpaceTraceTagParams);
 }
