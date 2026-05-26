@@ -57,6 +57,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "ControlRigSpline",
+			"Enabled": true
+		},
+		{
 			"Name": "EngineCameras",
 			"Enabled": true
 		},
