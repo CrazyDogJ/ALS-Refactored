@@ -449,7 +449,7 @@ void AAlsCharacter::SetViewMode(const FGameplayTag NewViewMode)
 	SetViewMode(NewViewMode, true);
 }
 
-void AAlsCharacter::NotifyViewModeChanged(const FGameplayTag& PreviousViewMode)
+void AAlsCharacter::NotifyViewModeChanged(const FGameplayTag PreviousViewMode)
 {
 	OnViewModeChanged(PreviousViewMode);
 }

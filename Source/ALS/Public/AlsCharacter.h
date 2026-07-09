@@ -177,9 +177,9 @@ public:
 	void SetViewMode(FGameplayTag NewViewMode);
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
-	void OnViewModeChanged(const FGameplayTag& PreviousViewMode);
+	void OnViewModeChanged(FGameplayTag PreviousViewMode);
 
-	virtual void NotifyViewModeChanged(const FGameplayTag& PreviousViewMode);
+	virtual void NotifyViewModeChanged(FGameplayTag PreviousViewMode);
 	
 private:
 	void SetViewMode(FGameplayTag NewViewMode, bool bSendRpc);
@@ -340,7 +340,7 @@ protected:
 
 	virtual void NotifyGaitChanged(FGameplayTag PreviousGait);
 	
-	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
 	void OnGaitChanged(FGameplayTag PreviousGait);
 
 	// Overlay Mode
@@ -425,15 +425,16 @@ public:
 	virtual void RefreshVelocityYawAngle();
 	
 	virtual void RefreshLocomotion();
-private:
+	
 	void SetDesiredVelocityYawAngle(float NewVelocityYawAngle);
-
+	
+	UFUNCTION(Server, Reliable)
+    void ServerSetInitialVelocityYawAngle(float NewVelocityYawAngle);
+	
+private:
 	void RefreshLocomotionEarly();
 
 	void RefreshLocomotionLate();
-
-	UFUNCTION(Server, Reliable)
-	void ServerSetInitialVelocityYawAngle(float NewVelocityYawAngle);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastSetInitialVelocityYawAngle(float NewVelocityYawAngle);
@@ -481,10 +482,11 @@ protected:
 	void RefreshGroundedAimingRotation(float DeltaTime);
 
 	bool ConstrainAimingRotation(FRotator& ActorRotation, float DeltaTime, bool bApplySecondaryConstraint = false);
-
-private:
+	
+public:
 	void ApplyRotationYawSpeedAnimationCurve(float DeltaTime);
-
+	
+private:
 	void RefreshInAirRotation(float DeltaTime);
 
 protected:
@@ -515,7 +517,7 @@ public:
 	virtual bool IsRollingAllowedToStart(const UAnimMontage* Montage) const;
 
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
-	UAlsFootstepEffectsSettings* SelectFootstepSettings();
+	UAlsFootstepEffectsSettings* SelectFootstepSettings() const;
 	
 	UFUNCTION(BlueprintCallable, Category = "ALS|Character")
 	void StartRollingGrounded(float PlayRate = 1.0f);
@@ -545,12 +547,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ALS|Character", Meta = (ReturnDisplayName = "Success"))
 	bool StartMantling();
 
+	bool StartMantling(const FAlsMantlingTraceSettings& TraceSettings);
+	
 	UFUNCTION(BlueprintNativeEvent, Category = "ALS|Character")
 	bool IsMantlingFinalAllowedToStart(const FAlsMantlingParameters& Parameters);
+	
 private:
 	bool AutoStartMantling();
-
-	bool StartMantling(const FAlsMantlingTraceSettings& TraceSettings);
 
 	UFUNCTION(Server, Reliable)
 	void ServerStartMantling(const FAlsMantlingParameters& Parameters);

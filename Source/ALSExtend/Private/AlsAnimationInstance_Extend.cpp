@@ -3,6 +3,9 @@
 
 #include "AlsAnimationInstance_Extend.h"
 
+#include "Components/SkeletalMeshComponent.h"
+#include "Curves/CurveFloat.h"
+
 float UAlsAnimationInstance_Extend::GetBlinkDelay() const
 {
 	if (MorphSettings)

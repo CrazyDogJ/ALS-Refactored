@@ -3,7 +3,7 @@
 #include "RigVMFunctions/Math/RigVMFunction_MathQuaternion.h"
 #include "AlsRigUnit_ConstraintRotation.generated.h"
 
-USTRUCT(DisplayName = "Constraint Rotation", Meta = (Category = "ALS"))
+USTRUCT(DisplayName = "Constraint Rotation", Meta = (Category = "ALS", DocumentationPolicy = "None"))
 struct ALS_API FAlsRigUnit_ConstraintRotation : public FRigVMFunction_MathQuaternionBase
 {
 	GENERATED_BODY()

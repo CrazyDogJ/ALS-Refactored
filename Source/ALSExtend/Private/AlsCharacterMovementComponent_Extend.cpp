@@ -6,10 +6,13 @@
 #include "AbilitySystemComponent.h"
 #include "AlsAttributeSet.h"
 #include "AlsCharacter_Extend.h"
+#include "DrawDebugHelpers.h"
 #include "Utility/CustomMovementMode.h"
 #include "WaterBodyActor.h"
 #include "WaterSplineComponent.h"
+#include "Animation/AnimInstance.h"
 #include "Components/CapsuleComponent.h"
+#include "Engine/Engine.h"
 #include "GameFramework/Character.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
@@ -353,7 +356,14 @@ void UAlsCharacterMovementComponent_Extend::UpdateWaterInfoForSwim()
 		for (int i = 0; i < WaterBodyComponents.Num(); ++i)
 		{
 			const auto WaterBody = WaterBodyComponents[i];
-			const auto QueryResult = WaterBody->QueryWaterInfoClosestToWorldLocation(UpdatedComponent->GetComponentLocation(), QueryFlags);
+			const auto TryQueryResult = WaterBody->TryQueryWaterInfoClosestToWorldLocation(UpdatedComponent->GetComponentLocation(), QueryFlags);
+			const auto QueryResult = TryQueryResult.GetValue();
+			
+			if (!TryQueryResult.HasValue())
+			{
+				continue;
+			}
+			
 			if (!QueryResult.IsInExclusionVolume())
 			{
 				if (i == 0)
@@ -762,7 +772,8 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 	GetWorld()->SweepSingleByChannel(BaseHit, CurrentClimbingPosition, CurrentClimbingPosition, FQuat::Identity, TraceChannel, CollisionSphere, ClimbQueryParams);
 	if (BaseHit.bBlockingHit)
 	{
-		SetBase(BaseHit.Component.Get(), BaseHit.BoneName);
+		auto NewBaseInterface = FMovementBaseInterfaceData(BaseHit.Component.Get());
+		SetBase(&NewBaseInterface, BaseHit.BoneName);
 	}
 
 	EStopClimbingType StopClimbingType;
@@ -1498,7 +1509,8 @@ float UAlsCharacterMovementComponent_Extend::GetImmerseDepth() const
 
 void UAlsCharacterMovementComponent_Extend::SetCharacterBase(UPrimitiveComponent* BaseComponent)
 {
-	SetBase(BaseComponent, FName("None"));
+	auto NewBaseInterface = FMovementBaseInterfaceData(BaseComponent);
+	SetBase(&NewBaseInterface);
 }
 
 FQuat UAlsCharacterMovementComponent_Extend::GetClimbingRotation(float deltaTime) const
@@ -2191,7 +2203,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 		remainingTime -= timeTick;
 
 		// Save current values
-		UPrimitiveComponent* const OldBase = GetMovementBase();
+		UPrimitiveComponent* const OldBase = Cast<UPrimitiveComponent>(GetMovementBaseObject());
 		const FVector PreviousBaseLocation = (OldBase != nullptr) ? OldBase->GetComponentLocation() : FVector::ZeroVector;
 		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
 		const FFindFloorResult OldFloor = CurrentFloor;
@@ -2264,7 +2276,8 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 			if (!NewDelta.IsZero())
 			{
 				// first revert this move
-				RevertMove(OldLocation, OldBase, PreviousBaseLocation, OldFloor, false);
+				auto OldBaseInterface = FMovementBaseInterfaceData(OldBase);
+				RevertMove(OldLocation, &OldBaseInterface, PreviousBaseLocation, OldFloor, false);
 
 				// avoid repeated ledge moves if the first one fails
 				bTriedLedgeMove = true;
@@ -2276,7 +2289,8 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 			}
 			else
 			{
-				bool bMustJump = bZeroDelta || (OldBase == nullptr || (!OldBase->IsQueryCollisionEnabled() && MovementBaseUtility::IsDynamicBase(OldBase)));
+				auto OldBaseInterface = FMovementBaseInterfaceData(OldBase);
+				bool bMustJump = bZeroDelta || (OldBase == nullptr || (!OldBase->IsQueryCollisionEnabled() && MovementBaseUtility::IsDynamicBase(&OldBaseInterface)));
 				if ((bMustJump || !bCheckedFall) && CheckFall(OldFloor, CurrentFloor.HitResult, Delta, OldLocation, remainingTime, timeTick, Iterations, bMustJump))
 				{
 					return;
@@ -2284,7 +2298,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 				bCheckedFall = true;
 
 				// revert this move
-				RevertMove(OldLocation, OldBase, PreviousBaseLocation, OldFloor, true);
+				RevertMove(OldLocation, &OldBaseInterface, PreviousBaseLocation, OldFloor, true);
 				remainingTime = 0.f;
 				break;
 			}
@@ -2306,7 +2320,8 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 				}
 
 				AdjustFloorHeight();
-				SetBase(CurrentFloor.HitResult.Component.Get(), CurrentFloor.HitResult.BoneName);
+				auto CurrentBaseInterface = FMovementBaseInterfaceData(CurrentFloor.HitResult.Component.Get());
+				SetBase(&CurrentBaseInterface, CurrentFloor.HitResult.BoneName);
 			}
 			else if (CurrentFloor.HitResult.bStartPenetrating && remainingTime <= 0.f)
 			{
@@ -2329,7 +2344,8 @@ void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 I
 			// See if we need to start falling.
 			if (!CurrentFloor.IsWalkableFloor() && !CurrentFloor.HitResult.bStartPenetrating)
 			{
-				const bool bMustJump = bJustTeleported || bZeroDelta || (OldBase == nullptr || (!OldBase->IsQueryCollisionEnabled() && MovementBaseUtility::IsDynamicBase(OldBase)));
+				auto OldBaseInterface = FMovementBaseInterfaceData(OldBase);
+				const bool bMustJump = bJustTeleported || bZeroDelta || (OldBase == nullptr || (!OldBase->IsQueryCollisionEnabled() && MovementBaseUtility::IsDynamicBase(&OldBaseInterface)));
 				if ((bMustJump || !bCheckedFall) && CheckFall(OldFloor, CurrentFloor.HitResult, Delta, OldLocation, remainingTime, timeTick, Iterations, bMustJump))
 				{
 					return;

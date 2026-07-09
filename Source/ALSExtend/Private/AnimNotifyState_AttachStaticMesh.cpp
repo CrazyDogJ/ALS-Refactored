@@ -3,6 +3,9 @@
 
 #include "AnimNotifyState_AttachStaticMesh.h"
 
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+
 void UAnimNotifyState_AttachStaticMesh::NotifyBegin(USkeletalMeshComponent * MeshComp, UAnimSequenceBase * Animation, float TotalDuration, const FAnimNotifyEventReference& EventReference)
 {
 	Super::NotifyBegin(MeshComp, Animation, TotalDuration, EventReference);

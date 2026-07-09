@@ -12,6 +12,7 @@
 #include "AlsCharacterMovementComponent_Extend.h"
 #include "Utility/CustomMovementMode.h"
 #include "Components/CapsuleComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Settings/AlsCharacterSettings.h"
@@ -200,7 +201,7 @@ void AAlsCharacter_Extend::OnRep_PlayerState()
 	K2_OnPlayerStateRep();
 }
 
-FGameplayTag AAlsCharacter_Extend::CalculateActualGait(const FGameplayTag& MaxAllowedGait) const
+FGameplayTag AAlsCharacter_Extend::CalculateActualGait(const FGameplayTag MaxAllowedGait) const
 {
 	if (LocomotionMode == AlsLocomotionModeTags::Swimming)
 	{
@@ -261,7 +262,7 @@ void AAlsCharacter_Extend::OnMovementModeChanged(EMovementMode PrevMovementMode,
 	}
 }
 
-void AAlsCharacter_Extend::NotifyLocomotionModeChanged(const FGameplayTag& PreviousLocomotionMode)
+void AAlsCharacter_Extend::NotifyLocomotionModeChanged(const FGameplayTag PreviousLocomotionMode)
 {
 	Super::NotifyLocomotionModeChanged(PreviousLocomotionMode);
 
@@ -281,7 +282,7 @@ void AAlsCharacter_Extend::NotifyLocomotionModeChanged(const FGameplayTag& Previ
 	}
 }
 
-void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction)
+void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag PreviousLocomotionAction)
 {
 	Super::NotifyLocomotionActionChanged(PreviousLocomotionAction);
 
@@ -320,21 +321,21 @@ void AAlsCharacter_Extend::NotifyLocomotionActionChanged(const FGameplayTag& Pre
 	SetGameplayTagInASC(LocomotionAction, false, AlsLocomotionActionTags::LocomotionActionParent);
 }
 
-void AAlsCharacter_Extend::NotifyRotationModeChanged(const FGameplayTag& PreviousRotationMode)
+void AAlsCharacter_Extend::NotifyRotationModeChanged(const FGameplayTag PreviousRotationMode)
 {
 	Super::NotifyRotationModeChanged(PreviousRotationMode);
 
 	SetGameplayTagInASC(RotationMode);
 }
 
-void AAlsCharacter_Extend::NotifyStanceChanged(const FGameplayTag& PreviousStance)
+void AAlsCharacter_Extend::NotifyStanceChanged(const FGameplayTag PreviousStance)
 {
 	Super::NotifyStanceChanged(PreviousStance);
 
 	SetGameplayTagInASC(Stance);
 }
 
-void AAlsCharacter_Extend::NotifyGaitChanged(const FGameplayTag& PreviousGait)
+void AAlsCharacter_Extend::NotifyGaitChanged(const FGameplayTag PreviousGait)
 {
 	Super::NotifyGaitChanged(PreviousGait);
 
@@ -503,8 +504,8 @@ void AAlsCharacter_Extend::ClimbDownLedgeImplementation()
 	bool bCanClimbDown;
 	MovementComponent_Extend->CheckClimbDownLedge(ForwardLoc, DownLoc, ForwardRot, bCanClimbDown);
 
-	auto CurrentFloorComp = BasedMovement.MovementBase;
-	if (!bCanClimbDown)
+	auto CurrentFloorComp = Cast<UPrimitiveComponent>(BasedMovement.MovementBaseInterfaceData.GetMovementBaseObject());
+	if (!bCanClimbDown || !CurrentFloorComp)
 	{
 		return;
 	}
@@ -1047,7 +1048,7 @@ bool AAlsCharacter_Extend::StartMantlingGliding()
 		   StartMantling(Settings->Mantling.InAirTrace); 
 }
 
-void AAlsCharacter_Extend::SetGameplayTagInASC(const FGameplayTag& AlsTag, const bool& bInit, const FGameplayTag& AlsParentTag)
+void AAlsCharacter_Extend::SetGameplayTagInASC(const FGameplayTag AlsTag, const bool& bInit, const FGameplayTag AlsParentTag)
 {
 	if (!GetAbilitySystemComponent()) return;
 	
@@ -1139,7 +1140,7 @@ bool AAlsCharacter_Extend::RefreshCustomInAirRotation(float DeltaTime)
 
 	switch (Settings->InAirRotationMode)
 	{
-	case EAlsInAirRotationMode::RotateToVelocityOnJump:
+	case EAlsInAirRotationMode::RotateToVelocity:
 		if (LocomotionState.bMoving)
 		{
 			if (IsAllowToRotateInAirByVelocity())
@@ -1157,7 +1158,7 @@ bool AAlsCharacter_Extend::RefreshCustomInAirRotation(float DeltaTime)
 		}
 		break;
 
-	case EAlsInAirRotationMode::KeepRelativeRotation:
+	case EAlsInAirRotationMode::KeepViewSpaceRotation:
 		if (IsAllowToRotateInAirByVelocity())
 		{
 			SetRotationSmooth(LocomotionState.VelocityYawAngle, DeltaTime, RotationInterpolationSpeed);
@@ -1165,7 +1166,7 @@ bool AAlsCharacter_Extend::RefreshCustomInAirRotation(float DeltaTime)
 		else
 		{
 			SetRotationSmooth(FRotator3f::NormalizeAxis(UE_REAL_TO_FLOAT(
-							ViewState.Rotation.Yaw - LocomotionState.ViewRelativeTargetYawAngle)),
+							ViewState.Rotation.Yaw - LocomotionState.TargetYawAngleViewSpace)),
 						DeltaTime, RotationInterpolationSpeed);
 		}
 		break;
@@ -1431,7 +1432,7 @@ void AAlsCharacter_Extend::Landed(const FHitResult& Hit)
 	GetAbilitySystemComponent()->BP_ApplyGameplayEffectToSelf(FallDamageGeClass, Damage, Context);
 }
 
-void AAlsCharacter_Extend::NotifyViewModeChanged(const FGameplayTag& PreviousViewMode)
+void AAlsCharacter_Extend::NotifyViewModeChanged(const FGameplayTag PreviousViewMode)
 {
 	Super::NotifyViewModeChanged(PreviousViewMode);
 

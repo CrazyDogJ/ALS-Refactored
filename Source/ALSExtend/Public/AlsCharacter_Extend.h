@@ -112,17 +112,17 @@ protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnPlayerStateChanged(APlayerState* NewPlayerState, APlayerState* OldPlayerState) override;
 	virtual void OnRep_PlayerState() override;
-	virtual FGameplayTag CalculateActualGait(const FGameplayTag& MaxAllowedGait) const override;
+	virtual FGameplayTag CalculateActualGait(FGameplayTag MaxAllowedGait) const override;
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
 
 	// Gameplay Tag For ASC
 	virtual class UAbilitySystemComponent* GetAbilitySystemComponent() const override;
-	virtual void NotifyViewModeChanged(const FGameplayTag& PreviousViewMode) override;
-	virtual void NotifyLocomotionModeChanged(const FGameplayTag& PreviousLocomotionMode) override;
-	virtual void NotifyRotationModeChanged(const FGameplayTag& PreviousRotationMode) override;
-	virtual void NotifyStanceChanged(const FGameplayTag& PreviousStance) override;
-	virtual void NotifyGaitChanged(const FGameplayTag& PreviousGait) override;
-	virtual void NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction) override;
+	virtual void NotifyViewModeChanged(FGameplayTag PreviousViewMode) override;
+	virtual void NotifyLocomotionModeChanged(FGameplayTag PreviousLocomotionMode) override;
+	virtual void NotifyRotationModeChanged(FGameplayTag PreviousRotationMode) override;
+	virtual void NotifyStanceChanged(FGameplayTag PreviousStance) override;
+	virtual void NotifyGaitChanged(FGameplayTag PreviousGait) override;
+	virtual void NotifyLocomotionActionChanged(FGameplayTag PreviousLocomotionAction) override;
 	
 	virtual bool IsRagdollingAllowedToStop() const override;
 	virtual bool IsRollingAllowedToStart(const UAnimMontage* Montage) const override;
@@ -296,7 +296,7 @@ public:
 
 	bool StartMantlingGliding();
 
-	void SetGameplayTagInASC(const FGameplayTag& AlsTag, const bool& bInit = false, const FGameplayTag& AlsParentTag = FGameplayTag::EmptyTag);
+	void SetGameplayTagInASC(FGameplayTag AlsTag, const bool& bInit = false, FGameplayTag AlsParentTag = FGameplayTag::EmptyTag);
 	void InitGameplayTagInASC();
 	
 	UAlsCapsuleSizeSettings* GetCapsuleSettings() const { return CapsuleSizeSettings; }

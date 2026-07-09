@@ -1,4 +1,5 @@
 ﻿#include "AlsCameraManager.h"
+#include UE_INLINE_GENERATED_CPP_BY_NAME(AlsCameraManager)
 
 void AAlsCameraManager::UpdateViewTargetInternal(FTViewTarget& OutVT, float DeltaTime)
 {

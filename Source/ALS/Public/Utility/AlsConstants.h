@@ -502,7 +502,7 @@ inline FName UAlsConstants::ViewBlockCurveName()
 	return ViewBlockCurve;
 }
 
-inline const FName& UAlsConstants::AllowAimingCurveName()
+inline FName UAlsConstants::AllowAimingCurveName()
 {
 	return AllowAimingCurve;
 }

@@ -25,7 +25,7 @@ UAnimMontage* AAlsCharacter::SelectRollMontage_Implementation()
 	return Settings->Rolling.Montage;
 }
 
-UAlsFootstepEffectsSettings* AAlsCharacter::SelectFootstepSettings_Implementation()
+UAlsFootstepEffectsSettings* AAlsCharacter::SelectFootstepSettings_Implementation() const
 {
 	return FootstepEffectsSettings;
 }

@@ -3,11 +3,13 @@
 
 #include "SwingRopeActor.h"
 
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/SplineMeshComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/Character.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/PhysicsConstraintComponent.h"
+#include "UObject/Package.h"
 
 ASwingRopeActor::ASwingRopeActor()
 {
@@ -167,7 +169,7 @@ void ASwingRopeActor::OnRep_PlayersOnRope()
 UBodySetup* CreateCapsuleBodySetup(float Radius, float HalfHeight)
 {
 	// 新建 UBodySetup（Transient，避免编辑器保存）
-	UBodySetup* BodySetup = NewObject<UBodySetup>(GetTransientPackage(), NAME_None, RF_Transient);
+	UBodySetup* BodySetup = NewObject<UBodySetup>(GetTransientPackageAsObject(), NAME_None, RF_Transient);
 	BodySetup->CollisionTraceFlag = CTF_UseSimpleAsComplex; // 按需设置
 
 	// 清空默认（保险）
