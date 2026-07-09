@@ -17,10 +17,10 @@ struct ALSCAMERA_API FAlsFirstPersonCameraSettings
 	float CameraOrthoNearClipPlane{5.0f};
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	FName CameraSocketName{TEXTVIEW("FirstPersonCamera")};
+	FName CameraSocketName{ANSITEXTVIEW("FirstPersonCamera")};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	FName CameraLockCurve{TEXTVIEW("ViewBlock")};
+	FName CameraLockCurve{ANSITEXTVIEW("ViewBlock")};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	float InterpSpeed{15.0f};
@@ -31,7 +31,7 @@ struct ALSCAMERA_API FAlsTraceDistanceSmoothingSettings
 {
 	GENERATED_BODY()
 
-	// The lower the value, the faster the interpolation. A zero value results in instant interpolation.
+	/// The lower the value, the faster the interpolation. A zero value means instant interpolation.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS", Meta = (ClampMin = 0, ForceUnits = "s"))
 	float InterpolationHalfLife{0.2f};
 };
@@ -60,10 +60,10 @@ struct ALSCAMERA_API FAlsThirdPersonCameraSettings
 	TEnumAsByte<ECollisionChannel> TraceChannel{ECC_Visibility};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	FName TraceShoulderLeftSocketName{TEXTVIEW("ThirdPersonTraceShoulderLeft")};
+	FName TraceShoulderLeftSocketName{ANSITEXTVIEW("ThirdPersonTraceShoulderLeft")};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	FName TraceShoulderRightSocketName{TEXTVIEW("ThirdPersonTraceShoulderRight")};
+	FName TraceShoulderRightSocketName{ANSITEXTVIEW("ThirdPersonTraceShoulderRight")};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
 	FVector3f TraceOverrideOffset{0.0f, 0.0f, 40.0f};
@@ -85,8 +85,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	uint8 bIgnoreTimeDilation : 1 {true};
 
-	// Camera will be teleported if the actor has moved farther than this
-	// distance in 1 frame. If zero is specified, teleportation will be disabled.
+	/// Teleports the camera if the actor has moved a distance greater than this
+	/// value in a single frame. A zero value disables teleportation.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", Meta = (ClampMin = 0, ForceUnits = "cm"))
 	float TeleportDistanceThreshold{200.0f};
 

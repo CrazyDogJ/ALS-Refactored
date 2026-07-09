@@ -2,15 +2,15 @@
 
 #include "AlsCrouchingSettings.h"
 #include "AlsDynamicTransitionsSettings.h"
-#include "AlsFeetSettings.h"
+#include "AlsFootLockSettings.h"
 #include "AlsGeneralAnimationSettings.h"
 #include "AlsGroundedSettings.h"
+#include "AlsHeadSettings.h"
 #include "AlsInAirSettings.h"
 #include "AlsRotateInPlaceSettings.h"
 #include "AlsStandingSettings.h"
 #include "AlsTransitionsSettings.h"
 #include "AlsTurnInPlaceSettings.h"
-#include "AlsViewAnimationSettings.h"
 #include "Engine/DataAsset.h"
 #include "AlsAnimationInstanceSettings.generated.h"
 
@@ -24,7 +24,7 @@ public:
 	FAlsGeneralAnimationSettings General;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
-	FAlsViewAnimationSettings View;
+	FAlsHeadSettings Head;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	FAlsGroundedSettings Grounded;
@@ -39,7 +39,7 @@ public:
 	FAlsInAirSettings InAir;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
-	FAlsFeetSettings Feet;
+	FAlsFootLockSettings FootLock;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	FAlsTransitionsSettings Transitions;

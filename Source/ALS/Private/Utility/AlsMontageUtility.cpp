@@ -16,10 +16,20 @@ FTransform UAlsMontageUtility::ExtractRootTransformFromMontage(const UAnimMontag
 		return FTransform::Identity;
 	}
 
-	const auto* Segment{Montage->SlotAnimTracks[0].AnimTrack.GetSegmentAtTime(Time)};
-	if (!ALS_ENSURE(Segment != nullptr))
+	const auto& AnimTrack{Montage->SlotAnimTracks[0].AnimTrack};
+
+	auto* Segment{AnimTrack.GetSegmentAtTime(FMath::Max(0.0f, Time))};
+	if (Segment == nullptr)
 	{
-		return FTransform::Identity;
+		if (!AnimTrack.AnimSegments.IsEmpty())
+		{
+			Segment = &AnimTrack.AnimSegments.Last();
+		}
+
+		if (!ALS_ENSURE(Segment != nullptr))
+		{
+			return FTransform::Identity;
+		}
 	}
 
 	const auto* Sequence{Cast<UAnimSequence>(Segment->GetAnimReference())};
@@ -28,7 +38,7 @@ FTransform UAlsMontageUtility::ExtractRootTransformFromMontage(const UAnimMontag
 		return FTransform::Identity;
 	}
 
-	const FAnimExtractContext ExtractionContext{static_cast<double>(Segment->ConvertTrackPosToAnimPos(Time))};
+	const FAnimExtractContext ExtractionContext{Segment->ConvertTrackPosToAnimPos(Time)};
 	return Sequence->ExtractRootTrackTransform(ExtractionContext, nullptr);
 }
 
@@ -50,8 +60,76 @@ FTransform UAlsMontageUtility::ExtractLastRootTransformFromMontage(const UAnimMo
 		return FTransform::Identity;
 	}
 
-	const FAnimExtractContext ExtractionContext{static_cast<double>(Segment.GetEndPos())};
+	const FAnimExtractContext ExtractionContext{Segment.GetEndPos()};
 	return Sequence->ExtractRootTrackTransform(ExtractionContext, nullptr);
+}
+
+FTransform UAlsMontageUtility::ExtractRootMotionFromMontage(const UAnimMontage* Montage, const float StartTime, const float EndTime)
+{
+	// Based on UMotionWarpingUtilities::ExtractRootMotionFromAnimation().
+
+	if (!ALS_ENSURE(IsValid(Montage)) || !ALS_ENSURE(!Montage->SlotAnimTracks.IsEmpty()))
+	{
+		return FTransform::Identity;
+	}
+
+	const auto& AnimTrack{Montage->SlotAnimTracks[0].AnimTrack};
+
+	TArray<FRootMotionExtractionStep> ExtractionSteps;
+	AnimTrack.GetRootMotionExtractionStepsForTrackRange(ExtractionSteps, StartTime, EndTime);
+
+	FRootMotionMovementParams RootMotionAccumulator;
+	const FAnimExtractContext ExtractionContext;
+
+	for (const auto& Step : ExtractionSteps)
+	{
+		if (IsValid(Step.AnimSequence))
+		{
+			RootMotionAccumulator.Accumulate(Step.AnimSequence->ExtractRootMotionFromRange(
+				Step.StartPosition, Step.EndPosition, ExtractionContext));
+		}
+	}
+
+	return RootMotionAccumulator.GetRootMotionTransform();
+}
+
+void UAlsMontageUtility::StopMontagesWithSlot(UAnimInstance* AnimationInstance, const FName SlotName, const float BlendOutDuration)
+{
+	if (!ALS_ENSURE(IsValid(AnimationInstance)) || !ALS_ENSURE(!SlotName.IsNone()))
+	{
+		return;
+	}
+
+	for (auto* MontageInstance : AnimationInstance->MontageInstances)
+	{
+		if (MontageInstance == nullptr || !MontageInstance->IsActive())
+		{
+			continue;
+		}
+
+		const auto* Montage{MontageInstance->Montage.Get()};
+
+		for (const auto& SlotTrack : Montage->SlotAnimTracks)
+		{
+			if (SlotTrack.SlotName != SlotName)
+			{
+				continue;
+			}
+
+			FMontageBlendSettings BlendOutSettings{Montage->BlendOut};
+
+			if (BlendOutDuration >= 0.0f)
+			{
+				BlendOutSettings.Blend.BlendTime = BlendOutDuration;
+			}
+
+			BlendOutSettings.BlendMode = Montage->BlendModeOut;
+			BlendOutSettings.BlendProfile = Montage->BlendProfileOut;
+
+			MontageInstance->Stop(BlendOutSettings);
+			break;
+		}
+	}
 }
 
 void UAlsMontageUtility::StopMontagesWithAnySharedSlots(UAnimInstance* AnimationInstance, const UAnimMontage* ReferenceMontage,

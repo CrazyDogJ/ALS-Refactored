@@ -12,11 +12,13 @@ public:
 	static constexpr auto CounterClockwiseRotationAngleThreshold{5.0f};
 
 public:
-	template <typename ValueType> requires std::is_floating_point_v<ValueType>
+	template <typename ValueType> requires UE::CFloatingPoint<ValueType>
 	static constexpr ValueType RemapAngleForCounterClockwiseRotation(ValueType Angle);
 
-	// Remaps the angle from the [175, 180] range to [-185, -180]. Used to
-	// make the character rotate counterclockwise during a 180 degree turn.
+	static VectorRegister4Double RemapRotationForCounterClockwiseRotation(const VectorRegister4Double& Rotation);
+
+	/// Remaps the angle from the [175, 180] range to the [-185, -180] range. It is
+	/// used to make the character rotate counterclockwise during an 180-degree turn.
 	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility", Meta = (ReturnDisplayName = "Angle"))
 	static float RemapAngleForCounterClockwiseRotation(float Angle);
 
@@ -29,16 +31,16 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility", Meta = (ReturnDisplayName = "Angle"))
 	static float InterpolateAngleConstant(float Current, float Target, float DeltaTime, float Speed);
 
-	// HalfLife is the time it takes for the distance to the target to be reduced by half.
+	/// HalfLife is the time it takes for the distance to the target to be reduced by half.
 	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility", Meta = (ReturnDisplayName = "Angle"))
 	static float DamperExactAngle(float Current, float Target, float DeltaTime, float HalfLife);
 
-	// HalfLife is the time it takes for the distance to the target to be reduced by half.
+	/// HalfLife is the time it takes for the distance to the target to be reduced by half.
 	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility",
 		Meta = (AutoCreateRefTerm = "Current, Target", ReturnDisplayName = "Rotation"))
 	static FRotator DamperExactRotation(const FRotator& Current, const FRotator& Target, float DeltaTime, float HalfLife);
 
-	// Same as FMath::QInterpTo(), but uses FQuat::FastLerp() instead of FQuat::Slerp().
+	/// Same as FMath::QInterpTo(), but uses FQuat::FastLerp() instead of FQuat::Slerp().
 	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility", Meta = (ReturnDisplayName = "Quaternion"))
 	static FQuat InterpolateQuaternionFast(const FQuat& Current, const FQuat& Target, float DeltaTime, float Speed);
 
@@ -46,7 +48,7 @@ public:
 	static FQuat GetTwist(const FQuat& Quaternion, const FVector& TwistAxis = FVector::UpVector);
 };
 
-template <typename ValueType> requires std::is_floating_point_v<ValueType>
+template <typename ValueType> requires UE::CFloatingPoint<ValueType>
 constexpr ValueType UAlsRotation::RemapAngleForCounterClockwiseRotation(const ValueType Angle)
 {
 	if (Angle > 180.0f - CounterClockwiseRotationAngleThreshold)
@@ -55,6 +57,22 @@ constexpr ValueType UAlsRotation::RemapAngleForCounterClockwiseRotation(const Va
 	}
 
 	return Angle;
+}
+
+inline VectorRegister4Double UAlsRotation::RemapRotationForCounterClockwiseRotation(const VectorRegister4Double& Rotation)
+{
+	static constexpr auto RemapThreshold{
+		MakeVectorRegisterDoubleConstant(180.0f - CounterClockwiseRotationAngleThreshold, 180.0f - CounterClockwiseRotationAngleThreshold,
+		                                 180.0f - CounterClockwiseRotationAngleThreshold, 180.0f - CounterClockwiseRotationAngleThreshold)
+	};
+
+	static constexpr auto RemapAngles{MakeVectorRegisterDoubleConstant(360.0f, 360.0f, 360.0f, 0.0f)};
+
+	const auto ReverseRotationMask{VectorCompareGE(Rotation, RemapThreshold)};
+
+	const auto ReversedRotation{VectorSubtract(Rotation, RemapAngles)};
+
+	return VectorSelect(ReverseRotationMask, ReversedRotation, Rotation);
 }
 
 inline float UAlsRotation::RemapAngleForCounterClockwiseRotation(const float Angle)
@@ -72,6 +90,28 @@ inline float UAlsRotation::LerpAngle(const float From, const float To, const flo
 
 inline FRotator UAlsRotation::LerpRotation(const FRotator& From, const FRotator& To, const float Ratio)
 {
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	const auto FromRegister{VectorLoadFloat3_W0(&From)};
+	const auto ToRegister{VectorLoadFloat3_W0(&To)};
+
+	auto Delta{VectorSubtract(ToRegister, FromRegister)};
+	Delta = VectorNormalizeRotator(Delta);
+
+	if (!VectorAnyGreaterThan(VectorAbs(Delta), GlobalVectorConstants::DoubleKindaSmallNumber))
+	{
+		return To;
+	}
+
+	Delta = RemapRotationForCounterClockwiseRotation(Delta);
+
+	auto ResultRegister{VectorMultiplyAdd(Delta, VectorLoadFloat1(&Ratio), FromRegister)};
+	ResultRegister = VectorNormalizeRotator(ResultRegister);
+
+	FRotator Result;
+	VectorStoreFloat3(ResultRegister, &Result);
+
+	return Result;
+#else
 	auto Result{To - From};
 	Result.Normalize();
 
@@ -84,32 +124,87 @@ inline FRotator UAlsRotation::LerpRotation(const FRotator& From, const FRotator&
 	Result.Normalize();
 
 	return Result;
+#endif
 }
 
 inline float UAlsRotation::InterpolateAngleConstant(const float Current, const float Target, const float DeltaTime, const float Speed)
 {
-	if (Speed <= 0.0f || FMath::IsNearlyEqual(Current, Target))
+	auto Delta{FMath::UnwindDegrees(Target - Current)};
+	const auto MaxDelta{Speed * DeltaTime};
+
+	if (Speed <= 0.0f || FMath::Abs(Delta) <= MaxDelta)
 	{
 		return Target;
 	}
 
-	auto Delta{FMath::UnwindDegrees(Target - Current)};
 	Delta = RemapAngleForCounterClockwiseRotation(Delta);
-
-	const auto MaxDelta{Speed * DeltaTime};
-
-	return FMath::UnwindDegrees(Current + FMath::Clamp(Delta, -MaxDelta, MaxDelta));
+	return FMath::UnwindDegrees(Current + FMath::Sign(Delta) * MaxDelta);
 }
 
 inline float UAlsRotation::DamperExactAngle(const float Current, const float Target, const float DeltaTime, const float HalfLife)
 {
-	return LerpAngle(Current, Target, UAlsMath::DamperExactAlpha(DeltaTime, HalfLife));
+	auto Delta{FMath::UnwindDegrees(Target - Current)};
+
+	if (FMath::IsNearlyZero(Delta, UE_KINDA_SMALL_NUMBER))
+	{
+		return Target;
+	}
+
+	Delta = RemapAngleForCounterClockwiseRotation(Delta);
+
+	const auto Alpha{UAlsMath::DamperExactAlpha(DeltaTime, HalfLife)};
+	return FMath::UnwindDegrees(Current + Delta * Alpha);
 }
 
 inline FRotator UAlsRotation::DamperExactRotation(const FRotator& Current, const FRotator& Target,
                                                   const float DeltaTime, const float HalfLife)
 {
-	return LerpRotation(Current, Target, UAlsMath::DamperExactAlpha(DeltaTime, HalfLife));
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+	const auto CurrentRegister{VectorLoadFloat3_W0(&Current)};
+	const auto TargetRegister{VectorLoadFloat3_W0(&Target)};
+
+	auto Delta{VectorSubtract(TargetRegister, CurrentRegister)};
+	Delta = VectorNormalizeRotator(Delta);
+
+	if (!VectorAnyGreaterThan(VectorAbs(Delta), GlobalVectorConstants::DoubleKindaSmallNumber))
+	{
+		return Target;
+	}
+
+	Delta = RemapRotationForCounterClockwiseRotation(Delta);
+
+	const double Alpha{UAlsMath::DamperExactAlpha(DeltaTime, HalfLife)};
+
+	auto ResultRegister{VectorMultiplyAdd(Delta, VectorLoadDouble1(&Alpha), CurrentRegister)};
+	ResultRegister = VectorNormalizeRotator(ResultRegister);
+
+	FRotator Result;
+	VectorStoreFloat3(ResultRegister, &Result);
+
+	return Result;
+#else
+	auto Result{Target - Current};
+	Result.Normalize();
+
+	if (FMath::IsNearlyZero(Result.Pitch, UE_KINDA_SMALL_NUMBER) &&
+	    FMath::IsNearlyZero(Result.Yaw, UE_KINDA_SMALL_NUMBER) &&
+	    FMath::IsNearlyZero(Result.Roll, UE_KINDA_SMALL_NUMBER))
+	{
+		return Target;
+	}
+
+	Result.Pitch = RemapAngleForCounterClockwiseRotation(Result.Pitch);
+	Result.Yaw = RemapAngleForCounterClockwiseRotation(Result.Yaw);
+	Result.Roll = RemapAngleForCounterClockwiseRotation(Result.Roll);
+
+	const auto Alpha{UAlsMath::DamperExactAlpha(DeltaTime, HalfLife)};
+
+	Result *= Alpha;
+	Result += Current;
+	Result.Normalize();
+
+	return Result;
+#endif
 }
 
 inline FQuat UAlsRotation::InterpolateQuaternionFast(const FQuat& Current, const FQuat& Target, const float DeltaTime, const float Speed)

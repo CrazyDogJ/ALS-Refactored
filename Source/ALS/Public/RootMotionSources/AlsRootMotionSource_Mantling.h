@@ -15,25 +15,22 @@ public:
 	TObjectPtr<const UAlsMantlingSettings> MantlingSettings;
 
 	UPROPERTY()
-	TWeakObjectPtr<const UPrimitiveComponent> TargetPrimitive;
+	TWeakObjectPtr<UPrimitiveComponent> TargetPrimitive;
 
 	UPROPERTY()
 	FName SocketName;
 	
 	UPROPERTY()
-	FVector TargetRelativeLocation{ForceInit};
+	FVector StartLocation{ForceInit};
 
 	UPROPERTY()
-	FRotator TargetRelativeRotation{ForceInit};
+	FRotator StartRotation{ForceInit};
 
 	UPROPERTY()
-	FVector ActorFeetLocationOffset{ForceInit};
+	FVector TargetLocation{ForceInit};
 
 	UPROPERTY()
-	FRotator ActorRotationOffset{ForceInit};
-
-	UPROPERTY()
-	FVector TargetAnimationLocation{ForceInit};
+	FRotator TargetRotation{ForceInit};
 
 	UPROPERTY(Meta = (ClampMin = 0, ForceUnits = "s"))
 	float MontageStartTime{0.0f};
