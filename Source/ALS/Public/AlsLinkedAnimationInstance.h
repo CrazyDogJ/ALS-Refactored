@@ -38,9 +38,11 @@ protected:
 		Meta = (BlueprintThreadSafe, ReturnDisplayName = "Parent"))
 	UAlsAnimationInstance* GetParent() const;
 
+	/** InitializeHead */
 	UFUNCTION(BlueprintCallable, Category = "ALS|Linked Animation Instance", Meta = (BlueprintThreadSafe))
 	void InitializeHead();
 
+	/** RefreshHead */
 	UFUNCTION(BlueprintCallable, Category = "ALS|Linked Animation Instance", Meta = (BlueprintThreadSafe))
 	void RefreshHead();
 

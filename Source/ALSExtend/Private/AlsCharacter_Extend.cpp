@@ -652,9 +652,9 @@ void AAlsCharacter_Extend::SwimUp()
 	if (MovementComponent_Extend->IsSwimming() || MovementComponent_Extend->IsFlying())
 	{
 		const FVector Direction{ GetGravityDirection() * -1 };
-		AddMovementInput(Direction, 1.f);
 		if (!MovementComponent_Extend->bIsSwimOnSurface)
 		{
+			AddMovementInput(Direction, 1.f);
 			MovementComponent_Extend->bJumpInputUnderWater = true;
 		}
 		if (!MovementComponent_Extend->bJumpInputUnderWater && MovementComponent_Extend->bIsSwimOnSurface)
@@ -850,7 +850,14 @@ void AAlsCharacter_Extend::RefreshGlidingRotation(float DeltaTime)
 		return;
 	}
 
-	SetRotationSmooth(LocomotionState.VelocityYawAngle, DeltaTime, MovementSettings_Extend->GlidingSettings.GlideRotationInterpSpeed);
+	if (RotationMode == AlsRotationModeTags::Aiming)
+	{
+		RefreshInAirAimingRotation(DeltaTime);
+	}
+	else
+	{
+		SetRotationSmooth(LocomotionState.VelocityYawAngle, DeltaTime, MovementSettings_Extend->GlidingSettings.GlideRotationInterpSpeed);
+	}
 }
 
 void AAlsCharacter_Extend::UpdateMeshRelativeLocation(float HalfHeight, bool bShouldMoveComp /** = false*/)
