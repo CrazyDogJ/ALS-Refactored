@@ -949,15 +949,19 @@ void AAlsCharacter_Extend::ChangeNoMovementState(bool bNoMove)
 
 void AAlsCharacter_Extend::AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAsset, const TSubclassOf<UAnimInstance> AnimInstanceClass)
 {
-	GetMesh()->SetSkeletalMeshAsset(SkeletalMeshAsset);
-	GetMesh()->SetAnimInstanceClass(AnimInstanceClass);
-	GetMesh()->SetAnimationMode(EAnimationMode::Type::AnimationBlueprint);
+	auto MeshComp = GetMesh();
+	MeshComp->SetSkeletalMeshAsset(SkeletalMeshAsset);
+	MeshComp->SetAnimInstanceClass(AnimInstanceClass);
+	MeshComp->SetAnimationMode(EAnimationMode::Type::AnimationBlueprint);
 	// Update Materials
 	if (SkeletalMeshAsset)
 	{
 		for (int i = 0; i < SkeletalMeshAsset->GetMaterials().Num(); ++i)
 		{
-			GetMesh()->SetMaterial(i, SkeletalMeshAsset->GetMaterials()[i].MaterialInterface);
+			// Create dynamic material instance.
+			auto MI = SkeletalMeshAsset->GetMaterials()[i].MaterialInterface;
+			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(MI, MeshComp);
+			MeshComp->SetMaterial(i, SkeletalMeshAsset->GetMaterials()[i].MaterialInterface);
 		}
 	}
 }

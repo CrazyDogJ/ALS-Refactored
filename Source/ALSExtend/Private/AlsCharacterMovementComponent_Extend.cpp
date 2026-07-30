@@ -103,6 +103,13 @@ void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 
 		{
 			// allow upward velocity at surface if against obstacle
 			Velocity.Z += OriginalAccelZ * deltaTime;
+			
+			// Cd_Changed : clamp velocity here to avoid wall acceleration bug trick.
+			FVector OutVelDir;
+			float OutVelLength;
+			Velocity.ToDirectionAndLength(OutVelDir, OutVelLength);
+			Velocity = OutVelDir * FMath::Min(OutVelLength, GetMaxSpeed());
+			
 			Adjusted = Velocity * (1.f - Hit.Time) * deltaTime;
 			Swim(Adjusted, Hit);
 			if (!IsSwimming())
