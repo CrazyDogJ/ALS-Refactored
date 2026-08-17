@@ -10,6 +10,7 @@
 #include "Engine/NetConnection.h"
 #include "Engine/SkeletalMesh.h"
 #include "Net/Core/PushModel/PushModel.h"
+#include "PhysicsEngine/PhysicsSettings.h"
 #include "RootMotionSources/AlsRootMotionSource_Mantling.h"
 #include "Settings/AlsCharacterSettings.h"
 #include "Utility/AlsConstants.h"
@@ -813,8 +814,8 @@ void AAlsCharacter::StartRagdollingImplementation()
 	if (RagdollPlayAnimation)
 	{
 		GetMesh()->bUpdateJointsFromAnimation = true; // Required for the flail animation to work properly.
-		GetMesh()->SetAllMotorsAngularPositionDrive(true, true, false);
-		GetMesh()->SetAllMotorsAngularVelocityDrive(true, true, false);
+		GetMesh()->SetAllMotorsAngularPositionDrive(true, true);
+		GetMesh()->SetAllMotorsAngularVelocityDrive(true, true);
 		
 		if (!GetMesh()->IsRunningParallelEvaluation() && !GetMesh()->GetBoneSpaceTransforms().IsEmpty())
 		{
@@ -929,6 +930,11 @@ void AAlsCharacter::RefreshRagdolling(const float DeltaTime)
 		return;
 	}
 
+	// Update should play animation.
+	GetMesh()->bUpdateJointsFromAnimation = RagdollPlayAnimation;
+	GetMesh()->SetAllMotorsAngularPositionDrive(RagdollPlayAnimation, RagdollPlayAnimation);
+	GetMesh()->SetAllMotorsAngularVelocityDrive(RagdollPlayAnimation, RagdollPlayAnimation);
+	
 	// Since we are dealing with physics here, we should not use functions such as USkinnedMeshComponent::GetSocketTransform() as
 	// they may return an incorrect result in situations like when the animation blueprint is not ticking or when URO is enabled.
 
@@ -1000,12 +1006,15 @@ void AAlsCharacter::RefreshRagdolling(const float DeltaTime)
 
 	// Use the speed to scale ragdoll joint strength for physical animation.
 
-	static constexpr auto ReferenceSpeed{1000.0f};
-	static constexpr auto Stiffness{25000.0f};
+	if (RagdollPlayAnimation)
+	{
+		static constexpr auto ReferenceSpeed{1000.0f};
+		static constexpr auto Stiffness{25000.0f};
 
-	const auto SpeedAmount{UAlsMath::Clamp01(UE_REAL_TO_FLOAT(RagdollingState.Velocity.Size() / ReferenceSpeed))};
+		const auto SpeedAmount{UAlsMath::Clamp01(UE_REAL_TO_FLOAT(RagdollingState.Velocity.Size() / ReferenceSpeed))};
 
-	GetMesh()->SetAllMotorsAngularDriveParams(SpeedAmount * Stiffness, 0.0f, 0.0f);
+		GetMesh()->SetAllMotorsAngularDriveParams(SpeedAmount * Stiffness, 0.0f, 0.0f);
+	}
 
 	// Limit the speed of ragdoll bodies.
 
@@ -1182,8 +1191,8 @@ void AAlsCharacter::StopRagdollingImplementation()
 	GetMesh()->bUpdateJointsFromAnimation = false;
 
 	// TODO : Cd_changed : Fixing glitch issue.
-	GetMesh()->SetAllMotorsAngularPositionDrive(false, false, false);
-	GetMesh()->SetAllMotorsAngularVelocityDrive(false, false, false);
+	GetMesh()->SetAllMotorsAngularPositionDrive(false, false);
+	GetMesh()->SetAllMotorsAngularVelocityDrive(false, false);
 
 	GetMesh()->SetSimulatePhysics(false);
 	// TODO : Cd_changed : Avoid clip through landscape.
