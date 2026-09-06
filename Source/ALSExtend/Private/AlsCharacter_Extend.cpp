@@ -390,8 +390,7 @@ void AAlsCharacter_Extend::RefreshRotationMode()
 		return;
 	}
 
-	if (LocomotionMode == AlsLocomotionModeTags::Flying ||
-		LocomotionMode == AlsLocomotionModeTags::Sliding)
+	if (LocomotionMode == AlsLocomotionModeTags::Sliding)
 	{
 		SetRotationMode(AlsRotationModeTags::VelocityDirection);
 		return;
