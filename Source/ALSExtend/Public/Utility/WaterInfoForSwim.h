@@ -11,14 +11,18 @@ struct FWaterInfoForSwim
 public:
 	FWaterInfoForSwim(){}
 	
-	FWaterInfoForSwim(const FVector& InWaterPlaneLocation, const FVector& InWaterPlaneNormal,
+	FWaterInfoForSwim(const bool& InIsInWater, const FVector& InWaterPlaneLocation, const FVector& InWaterPlaneNormal,
 	                  const FVector& InWaterSurfacePosition, const FVector& InWaterVelocity)
 	{
+		bIsInWater = InIsInWater;
 		WaterPlaneLocation = InWaterPlaneLocation;
 		WaterPlaneNormal = InWaterPlaneNormal;
 		WaterSurfacePosition = InWaterSurfacePosition;
 		WaterVelocity = InWaterVelocity;
 	}
+	
+	UPROPERTY(BlueprintReadOnly)
+	bool bIsInWater = false;
 	
 	UPROPERTY(BlueprintReadOnly)
 	FVector WaterPlaneLocation = FVector::ZeroVector;

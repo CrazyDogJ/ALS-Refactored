@@ -355,6 +355,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateWaterInfoForSwim()
 			| EWaterBodyQueryFlags::ComputeVelocity
 			| EWaterBodyQueryFlags::IncludeWaves;
 
+		bool IsInWater = false;
 		FVector HighestPlaneLocation = FVector::ZeroVector;
 		FVector HighestPlaneNormal = FVector::ZeroVector;
 		FVector HighestSurfacePosition = FVector::ZeroVector;
@@ -371,34 +372,36 @@ void UAlsCharacterMovementComponent_Extend::UpdateWaterInfoForSwim()
 				continue;
 			}
 			
-			if (!QueryResult.IsInExclusionVolume())
+			if (QueryResult.IsInWater() && !IsInWater)
 			{
-				if (i == 0)
+				IsInWater = true;
+			}
+			
+			if (i == 0)
+			{
+				HighestPlaneLocation = QueryResult.GetWaterPlaneLocation();
+				HighestPlaneNormal = QueryResult.GetWaterPlaneNormal();
+				HighestSurfacePosition = QueryResult.GetWaterSurfaceLocation();
+				BlendedVelocity = QueryResult.GetVelocity();
+			}
+			else
+			{
+				const auto CurrentPlaneLocation = QueryResult.GetWaterPlaneLocation();
+				if (CurrentPlaneLocation.Z > HighestPlaneLocation.Z)
 				{
-					HighestPlaneLocation = QueryResult.GetWaterPlaneLocation();
+					HighestPlaneLocation = CurrentPlaneLocation;
 					HighestPlaneNormal = QueryResult.GetWaterPlaneNormal();
-					HighestSurfacePosition = QueryResult.GetWaterSurfaceLocation();
-					BlendedVelocity = QueryResult.GetVelocity();
 				}
-				else
+				const auto CurrentSurfaceLocation = QueryResult.GetWaterSurfaceLocation();
+				if (CurrentSurfaceLocation.Z > HighestSurfacePosition.Z)
 				{
-					const auto CurrentPlaneLocation = QueryResult.GetWaterPlaneLocation();
-					if (CurrentPlaneLocation.Z > HighestPlaneLocation.Z)
-					{
-						HighestPlaneLocation = CurrentPlaneLocation;
-						HighestPlaneNormal = QueryResult.GetWaterPlaneNormal();
-					}
-					const auto CurrentSurfaceLocation = QueryResult.GetWaterSurfaceLocation();
-					if (CurrentSurfaceLocation.Z > HighestSurfacePosition.Z)
-					{
-						HighestSurfacePosition = CurrentSurfaceLocation;
-					}
-					BlendedVelocity += QueryResult.GetVelocity();
+					HighestSurfacePosition = CurrentSurfaceLocation;
 				}
+				BlendedVelocity += QueryResult.GetVelocity();
 			}
 		}
 		
-		WaterInfoForSwim = FWaterInfoForSwim(HighestPlaneLocation, HighestPlaneNormal, HighestSurfacePosition, BlendedVelocity);
+		WaterInfoForSwim = FWaterInfoForSwim(IsInWater, HighestPlaneLocation, HighestPlaneNormal, HighestSurfacePosition, BlendedVelocity);
 	}
 }
 
@@ -2108,6 +2111,12 @@ bool UAlsCharacterMovementComponent_Extend::IsInWater() const
 		return false;
 	}
 
+	// Check is in exclusion area
+	if (!WaterInfoForSwim.bIsInWater)
+	{
+		return false;
+	}
+	
 	float HalfHeight;
 	float Radius;
 	GetDefaultScaledCapsule(HalfHeight, Radius);

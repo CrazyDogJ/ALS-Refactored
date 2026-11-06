@@ -5,6 +5,7 @@
 #include "NiagaraFunctionLibrary.h"
 #include "WaterBodyActor.h"
 #include "WaterBodyExclusionVolume.h"
+#include "WaterRuntimeSettings.h"
 #include "Animation/AnimInstance.h"
 #include "Components/AudioComponent.h"
 #include "Components/DecalComponent.h"
@@ -127,30 +128,29 @@ void UAlsAnimNotify_FootstepEffects::Notify(USkeletalMeshComponent* Mesh, UAnimS
 	QueryParameters.bReturnPhysicalMaterial = true;
 
 	// Should ignore water body actor when in exclude area.
-	AWaterBodyExclusionVolume* ExclusionVolume = nullptr;
-	TArray<FOverlapResult> OverlapResultsExclude;
+	TArray<FOverlapResult> OverlapWaters;
 	auto Params = FCollisionObjectQueryParams();
-	Params.AddObjectTypesToQuery(ECC_WorldStatic);
-	Params.AddObjectTypesToQuery(ECC_WorldDynamic);
-	World->OverlapMultiByObjectType(OverlapResultsExclude, FootTransform.GetLocation(), FQuat::Identity, Params, FCollisionShape::MakeSphere(1.0f), QueryParameters);
+	Params.AddObjectTypesToQuery(GetDefault<UWaterRuntimeSettings>()->CollisionChannelForWaterTraces);
+	World->OverlapMultiByObjectType(OverlapWaters, FootTransform.GetLocation(), FQuat::Identity, Params, FCollisionShape::MakeSphere(1.0f), QueryParameters);
 
-	for (const auto Itr : OverlapResultsExclude)
+	for (const auto Itr : OverlapWaters)
 	{
-		ExclusionVolume = Cast<AWaterBodyExclusionVolume>(Itr.GetActor());
-		if (IsValid(ExclusionVolume))
+		const auto WaterBodyActor = Cast<AWaterBody>(Itr.GetActor());
+		if (IsValid(WaterBodyActor))
 		{
-			break;
+			const auto QueryResult = WaterBodyActor->GetWaterBodyComponent()->
+			TryQueryWaterInfoClosestToWorldLocation(FootTransform.GetLocation(), 
+				EWaterBodyQueryFlags::ComputeImmersionDepth | 
+				EWaterBodyQueryFlags::IncludeWaves | 
+				EWaterBodyQueryFlags::ComputeLocation);
+			if (QueryResult.IsValid())
+			{
+				if (!QueryResult.GetValue().IsInWater())
+				{
+					QueryParameters.AddIgnoredActor(WaterBodyActor);
+				}
+			}
 		}
-	}
-	
-	if (IsValid(ExclusionVolume))
-	{
-		TArray<AActor*> WaterBodies;
-		for (auto WaterBody : ExclusionVolume->WaterBodies)
-		{
-			WaterBodies.Add(WaterBody.Get());
-		}
-		QueryParameters.AddIgnoredActors(WaterBodies);
 	}
 	
 	FHitResult FootstepHit;
