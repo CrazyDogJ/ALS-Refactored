@@ -535,7 +535,7 @@ void AAlsCharacter::StartMantlingImplementation(const FAlsMantlingParameters& Pa
 	AlsCharacterMovement->SetMovementModeLocked(true);
 
 	FMovementBaseInterfaceData MovementBaseData{Parameters.TargetPrimitive.Get()};
-	GetCharacterMovement()->SetBase(&MovementBaseData);
+	GetCharacterMovement()->SetBase(&MovementBaseData, Parameters.SocketName);
 
 	// Create mantling root motion.
 

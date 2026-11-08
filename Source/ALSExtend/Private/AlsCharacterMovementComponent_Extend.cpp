@@ -19,6 +19,14 @@
 #include "Utility/AlsDebugUtility.h"
 #include "Utility/AlsGameplayTags_Extend.h"
 
+static bool DebugDrawSwitch = false;
+static FAutoConsoleVariableRef CVaDebugDrawSwitch(
+	TEXT("AlsExtend.DrawDebug"),
+	DebugDrawSwitch,
+	TEXT("Should draw debug for als extend movement."),
+	ECVF_Default
+);
+
 DECLARE_CYCLE_STAT(TEXT("Char FindFloor"), STAT_CharFindFloor, STATGROUP_Character);
 
 // Sets default values for this component's properties
@@ -758,6 +766,23 @@ void UAlsCharacterMovementComponent_Extend::UnCrouch(bool bClientSimulation)
 	}
 }
 
+void UAlsCharacterMovementComponent_Extend::UpdateClimbingBase()
+{
+	//SetBase
+	FHitResult BaseHit;
+	const FCollisionShape CollisionSphere = FCollisionShape::MakeSphere(6);
+	const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
+	const auto TraceEnd = CurrentClimbingPosition + UpdatedComponent->GetForwardVector() * CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	GetWorld()->SweepSingleByChannel(BaseHit, CurrentClimbingPosition, 
+		TraceEnd,
+		FQuat::Identity, TraceChannel, CollisionSphere, ClimbQueryParams);
+	if (BaseHit.bBlockingHit)
+	{
+		auto NewBaseInterface = FMovementBaseInterfaceData(BaseHit.Component.Get());
+		SetBase(&NewBaseInterface, BaseHit.BoneName);
+	}
+}
+
 void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 Iterations)
 {
 	if (deltaTime < MIN_TICK_TIME)
@@ -775,16 +800,7 @@ void UAlsCharacterMovementComponent_Extend::PhysClimbing(float deltaTime, int32 
 
 	ComputeSurfaceInfo(CurrentWallHits, CurrentClimbingPosition, CurrentClimbingNormal, VelocityWallHit.ImpactNormal, UpdatedComponent->GetComponentLocation());
 
-	//SetBase
-	FHitResult BaseHit;
-	const FCollisionShape CollisionSphere = FCollisionShape::MakeSphere(6);
-	const auto TraceChannel = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbTraceChannel;
-	GetWorld()->SweepSingleByChannel(BaseHit, CurrentClimbingPosition, CurrentClimbingPosition, FQuat::Identity, TraceChannel, CollisionSphere, ClimbQueryParams);
-	if (BaseHit.bBlockingHit)
-	{
-		auto NewBaseInterface = FMovementBaseInterfaceData(BaseHit.Component.Get());
-		SetBase(&NewBaseInterface, BaseHit.BoneName);
-	}
+	UpdateClimbingBase();
 
 	EStopClimbingType StopClimbingType;
 	if (ShouldStopClimbing(StopClimbingType))
@@ -1434,7 +1450,8 @@ bool UAlsCharacterMovementComponent_Extend::CanStartClimbing(float& HorizontalAc
 	float DefaultHalfHeight;
 	float DefaultRadius;
 	GetDefaultScaledCapsule(DefaultHalfHeight, DefaultRadius);
-	if (bSkipEyeTrace ? true : IsFacingSurface(CompLoc, -GetGravityDirection(), CompForwardVec, DefaultHalfHeight, DefaultRadius) &&
+	// Fix skip eye trace here for unexpected can climb pass.
+	if ((bSkipEyeTrace ? true : IsFacingSurface(CompLoc, -GetGravityDirection(), CompForwardVec, DefaultHalfHeight, DefaultRadius)) &&
 		HorizontalForwardDegrees <= GetMovementSettingsExtendSafe()->ClimbingSettings.MinHorizontalDegreesToStartClimbing &&
 		VerticalDegrees <= 90 - GetWalkableFloorAngle() &&
 		!bIsCeiling &&
@@ -1517,10 +1534,10 @@ float UAlsCharacterMovementComponent_Extend::GetImmerseDepth() const
 	return (WaterSurface.Z - (UpdatedComponent->GetComponentLocation().Z - DefaultHalfHeight));
 }
 
-void UAlsCharacterMovementComponent_Extend::SetCharacterBase(UPrimitiveComponent* BaseComponent)
+void UAlsCharacterMovementComponent_Extend::SetCharacterBase(UPrimitiveComponent* BaseComponent, const FName SocketName)
 {
 	auto NewBaseInterface = FMovementBaseInterfaceData(BaseComponent);
-	SetBase(&NewBaseInterface);
+	SetBase(&NewBaseInterface, SocketName);
 }
 
 FQuat UAlsCharacterMovementComponent_Extend::GetClimbingRotation(float deltaTime) const

@@ -6,6 +6,7 @@
 #include "Animation/AnimInstance.h"
 #include "Engine/OverlapResult.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/WorldSettings.h"
 #include "Utility/AlsCameraConstants.h"
 #include "Utility/AlsDebugUtility.h"
@@ -207,7 +208,7 @@ void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 	// Refresh movement base.
 	
 	const auto& BasedMovement{Character->GetBasedMovement()};
-	const auto bMovementBaseHasRelativeRotation{BasedMovement.HasRelativeRotation()};
+	const auto bMovementBaseHasRelativeRotation{Character->GetCharacterMovement()->bIgnoreBaseRotation ? BasedMovement.HasRelativeRotation() : false};
 
 	auto MovementBaseLocation{FVector::ZeroVector};
 	auto MovementBaseRotation{FQuat::Identity};

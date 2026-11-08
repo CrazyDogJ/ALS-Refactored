@@ -133,9 +133,12 @@ private:
 	/**
 	 * Set character attachment base component.Like floor or wall.
 	 * @param BaseComponent Base component
+	 * @param SocketName Base component bone socket
 	 */
 	UFUNCTION(BlueprintCallable)
-	void SetCharacterBase(UPrimitiveComponent* BaseComponent);
+	void SetCharacterBase(UPrimitiveComponent* BaseComponent, const FName SocketName = FName());
+	
+	void UpdateClimbingBase();
 
 	void PhysClimbing(float deltaTime, int32 Iterations);
 
@@ -175,12 +178,6 @@ private:
 	UAlsMovementSettings_Extend* GetMovementSettingsExtendSafe() const;
 	
 public:
-	
-#if WITH_EDITORONLY_DATA
-	// Should draw climb debug shapes.
-	UPROPERTY(Category = "Character Movement: Climbing", EditAnywhere, BlueprintReadWrite)
-	bool DebugDrawSwitch = false;
-#endif
 	
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	bool bIsClimbDashing = false;

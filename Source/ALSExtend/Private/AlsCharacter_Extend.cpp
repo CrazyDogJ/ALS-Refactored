@@ -65,7 +65,7 @@ void AAlsCharacter_Extend::Tick(float DeltaSeconds)
 	{
 		if (StartMantlingGliding())
 		{
-			MovementComponent_Extend->SetMovementMode(MOVE_Falling);
+			GetCharacterMovement()->SetMovementMode(MOVE_Falling);
 		}
 	}
 	
@@ -482,8 +482,8 @@ void AAlsCharacter_Extend::OnClimbDownMontageBlendOut(UAnimMontage* Montage, boo
 		return;
 	}
 
-	MovementComponent_Extend->StopMovementImmediately();
-	MovementComponent_Extend->SetMovementMode(MOVE_Falling);
+	// GetCharacterMovement()->StopMovementImmediately();
+	// GetCharacterMovement()->SetMovementMode(MOVE_Falling);
 	SetLocomotionAction(FGameplayTag::EmptyTag);
 	K2_AutoTryClimb();
 }
@@ -534,11 +534,16 @@ void AAlsCharacter_Extend::ClimbDownLedgeImplementation()
 													   Params.Component, Params.SocketName, true,
 													   Params.Transform_B.GetLocation(), Params.Transform_B.GetRotation().Rotator());
 
-	MovementComponent_Extend->SetMovementMode(MOVE_Flying);
-	
+	// Start climb down ledge
+	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+	// Set base movement primitive component
+	FMovementBaseInterfaceData MovementBaseData{Params.Component};
+	GetCharacterMovement()->SetBase(&MovementBaseData, Params.SocketName);
+	// Set montage
 	GetMesh()->GetAnimInstance()->Montage_Play(MovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
 	auto Delegate = GetMesh()->GetAnimInstance()->Montage_GetBlendingOutDelegate(MovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
 	Delegate->BindUFunction(this, "OnClimbDownMontageBlendOut");
+	// Set action.
 	SetLocomotionAction(AlsLocomotionActionTags::ClimbDownLedge);
 }
 
@@ -574,7 +579,7 @@ void AAlsCharacter_Extend::SetCurrentOverlayClass(FName InTag, TSubclassOf<UAnim
 
 void AAlsCharacter_Extend::EnterSlide() const
 {
-	MovementComponent_Extend->SetMovementMode(MOVE_Custom, CMOVE_Slide);
+	GetCharacterMovement()->SetMovementMode(MOVE_Custom, CMOVE_Slide);
 }
 
 bool AAlsCharacter_Extend::IsAllowRolling_Implementation() const
@@ -648,7 +653,7 @@ void AAlsCharacter_Extend::NativeClimbToWalk()
 
 void AAlsCharacter_Extend::SwimUp()
 {
-	if (MovementComponent_Extend->IsSwimming() || MovementComponent_Extend->IsFlying())
+	if (GetCharacterMovement()->IsSwimming() || GetCharacterMovement()->IsFlying())
 	{
 		const FVector Direction{ GetGravityDirection() * -1 };
 		if (!MovementComponent_Extend->bIsSwimOnSurface)
@@ -665,7 +670,7 @@ void AAlsCharacter_Extend::SwimUp()
 
 void AAlsCharacter_Extend::SwimUpStop()
 {
-	if (MovementComponent_Extend->IsSwimming())
+	if (GetCharacterMovement()->IsSwimming())
 	{
 		MovementComponent_Extend->bJumpInputUnderWater = !MovementComponent_Extend->bIsSwimOnSurface;
 	}
@@ -897,7 +902,7 @@ void AAlsCharacter_Extend::SetViewState(FAlsViewState InViewState)
 
 void AAlsCharacter_Extend::SwimDown()
 {
-	if (MovementComponent_Extend->IsSwimming() || MovementComponent_Extend->IsFlying())
+	if (GetCharacterMovement()->IsSwimming() || GetCharacterMovement()->IsFlying())
 	{
 		const FVector Direction{ GetGravityDirection() };
 		AddMovementInput(Direction, 1.0f);
@@ -922,7 +927,7 @@ void AAlsCharacter_Extend::ExitSwing_Implementation(bool bWantsToJump)
 
 void AAlsCharacter_Extend::SwingMoveUpDown(float UpDown)
 {
-	if (MovementComponent_Extend->MovementMode == MOVE_Custom && MovementComponent_Extend->CustomMovementMode == CMOVE_RopeSwing)
+	if (GetCharacterMovement()->MovementMode == MOVE_Custom && GetCharacterMovement()->CustomMovementMode == CMOVE_RopeSwing)
 	{
 		AddMovementInput(FVector(0,0,UpDown), 1.0f);
 	}
@@ -959,8 +964,7 @@ void AAlsCharacter_Extend::AlsSetSkeletalMeshAsset(USkeletalMesh* SkeletalMeshAs
 		{
 			// Create dynamic material instance.
 			auto MI = SkeletalMeshAsset->GetMaterials()[i].MaterialInterface;
-			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(MI, MeshComp);
-			MeshComp->SetMaterial(i, SkeletalMeshAsset->GetMaterials()[i].MaterialInterface);
+			MeshComp->SetMaterial(i, MI);
 		}
 	}
 }
@@ -1100,7 +1104,7 @@ void AAlsCharacter_Extend::InitCapsuleSize()
 		if (bValid)
 		{
 			// Here the crouched capsule only worked on half height.
-			MovementComponent_Extend->SetCrouchedHalfHeight(FoundCrouch.CapsuleHalfHeight);
+			GetCharacterMovement()->SetCrouchedHalfHeight(FoundCrouch.CapsuleHalfHeight);
 		}
 	}
 }
