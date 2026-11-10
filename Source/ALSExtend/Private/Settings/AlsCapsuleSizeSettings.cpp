@@ -6,6 +6,8 @@ FAlsCapsuleSizeStateSettings UAlsCapsuleSizeSettings::QueryCapsuleSize(const AAl
 {
 	Valid = false;
 	UserDesc = "Invalid";
+	// 修复：蓝图可在角色创建前查询配置。
+	if (!IsValid(AlsCharacter)) return FAlsCapsuleSizeStateSettings();
 	
 	const auto LocomotionModeTag = AlsCharacter->GetLocomotionMode();
 	const auto StanceTag = AlsCharacter->GetStance();

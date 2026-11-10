@@ -38,7 +38,7 @@ public:
 #pragma region Functions
 public:
 	virtual void NativeInitializeAnimation() override;
-	virtual void NativeThreadSafeUpdateAnimation(float DeltaTime) override;	
+	virtual void NativeUpdateAnimation(float DeltaTime) override;	
 	
 	/*
 	 * Return random blink delay time base on morph settings.

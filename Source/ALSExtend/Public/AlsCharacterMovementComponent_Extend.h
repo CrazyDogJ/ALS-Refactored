@@ -175,7 +175,7 @@ private:
 	void UpdateClimbDashState(float deltaTime);
 	void StopClimbDashing();
 	void SetMovementSettingsExtend(UAlsMovementSettings_Extend* InSettings);
-	UAlsMovementSettings_Extend* GetMovementSettingsExtendSafe() const;
+	const UAlsMovementSettings_Extend* GetMovementSettingsExtendSafe() const;
 	
 public:
 	
@@ -263,64 +263,48 @@ public:
 	FVector GetCurrentClimbPosition() const {return CurrentClimbingPosition;};
 #pragma endregion FreeClimb
 #pragma region NetDebug
+	// 修复：网络调试查询可在编辑器预览或世界退出时执行。
 	UFUNCTION(BlueprintPure, Category = Network)
 		int GetNetInRateByte() const
 	{
-		if (GetWorld()->GetNetDriver())
-		{
-			return GetWorld()->GetNetDriver()->InBytes;
-		}
-		return 0;
+		const auto* Driver = GetWorld() ? GetWorld()->GetNetDriver() : nullptr;
+		return Driver ? Driver->InBytes : 0;
 	}
 	UFUNCTION(BlueprintPure, Category = Network)
 		int GetNetOutRateByte() const
 	{
-		if (GetWorld()->GetNetDriver())
-		{
-			return GetWorld()->GetNetDriver()->OutBytes;
-		}
-		return 0;
+		const auto* Driver = GetWorld() ? GetWorld()->GetNetDriver() : nullptr;
+		return Driver ? Driver->OutBytes : 0;
 	}
 	UFUNCTION(BlueprintPure, Category = Network)
 		int GetNetInRatePackets() const
 	{
-		if (GetWorld()->GetNetDriver())
-		{
-			return GetWorld()->GetNetDriver()->InPackets;
-		}
-		return 0;
+		const auto* Driver = GetWorld() ? GetWorld()->GetNetDriver() : nullptr;
+		return Driver ? Driver->InPackets : 0;
 	}
 	UFUNCTION(BlueprintPure, Category = Network)
 		int GetNetOutRatePackets() const
 	{
-		if (GetWorld()->GetNetDriver())
-		{
-			return GetWorld()->GetNetDriver()->OutPackets;
-		}
-		return 0;
+		const auto* Driver = GetWorld() ? GetWorld()->GetNetDriver() : nullptr;
+		return Driver ? Driver->OutPackets : 0;
 	}
 	UFUNCTION(BlueprintPure, Category = Network)
 		int GetNetInLossPackets() const
 	{
-		if (GetWorld()->GetNetDriver())
-		{
-			return GetWorld()->GetNetDriver()->InPacketsLost;
-		}
-		return 0;
+		const auto* Driver = GetWorld() ? GetWorld()->GetNetDriver() : nullptr;
+		return Driver ? Driver->InPacketsLost : 0;
 	}
 	UFUNCTION(BlueprintPure, Category = Network)
 		int GetNetOutLossPackets() const
 	{
-		if (GetWorld()->GetNetDriver())
-		{
-			return GetWorld()->GetNetDriver()->OutPacketsLost;
-		}
-		return 0;
+		const auto* Driver = GetWorld() ? GetWorld()->GetNetDriver() : nullptr;
+		return Driver ? Driver->OutPacketsLost : 0;
 	}
 #pragma endregion NetDebug
 	
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
 

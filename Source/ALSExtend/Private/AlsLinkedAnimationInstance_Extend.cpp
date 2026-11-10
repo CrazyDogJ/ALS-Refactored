@@ -40,7 +40,7 @@ void UAlsLinkedAnimationInstance_Extend::NativeInitializeAnimation()
 void UAlsLinkedAnimationInstance_Extend::NativeBeginPlay()
 {
 #if WITH_EDITOR
-	ALS_ENSURE_MESSAGE(Parent.IsValid(),
+	ALS_ENSURE_MESSAGE(ParentExtend.IsValid(),
 					   TEXT("%s (%s) should only be used as a linked animation instance within the %s animation blueprint!"),
 					   ALS_GET_TYPE_STRING(UAlsLinkedAnimationInstance_Extend).GetData(), *GetClass()->GetAuthoredName(),
 					   ALS_GET_TYPE_STRING(UAlsAnimationInstance_Extend).GetData());
@@ -55,8 +55,9 @@ UAlsAnimationInstance_Extend* UAlsLinkedAnimationInstance_Extend::GetParentExten
 
 void UAlsLinkedAnimationInstance_Extend::RefreshSwimmingVelocityBlend()
 {
-	if (Parent.IsValid())
+	// 修复：基础 ALS 动画实例有效时，扩展类型转换仍可能失败。
+	if (auto* ExtendedInstance = ParentExtend.Get())
 	{
-		ParentExtend->RefreshSwimmingVelocityBlend();
+		ExtendedInstance->RefreshSwimmingVelocityBlend();
 	}
 }

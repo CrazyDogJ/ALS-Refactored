@@ -33,6 +33,9 @@ DECLARE_CYCLE_STAT(TEXT("Char FindFloor"), STAT_CharFindFloor, STATGROUP_Charact
 
 void UAlsCharacterMovementComponent_Extend::PhysSwimming(float deltaTime, int32 Iterations)
 {
+	// 修复：该组件可装到普通 Character，扩展动作仅适用于扩展角色。
+	if (!HasValidData()) return;
+	if (!Cast<AAlsCharacter_Extend>(CharacterOwner)) { Super::PhysSwimming(deltaTime, Iterations); return; }
 	if (deltaTime < MIN_TICK_TIME)
 	{
 		return;
@@ -352,9 +355,11 @@ FVector UAlsCharacterMovementComponent_Extend::GetWaterSurface() const
 
 void UAlsCharacterMovementComponent_Extend::UpdateWaterInfoForSwim()
 {
+	// 修复：离开水体或所有采样失败后不能继续使用上一帧的水面。
+	WaterInfoForSwim = FWaterInfoForSwim();
 	WaterBodyComponents = GetWaterBodyComponents();
 	
-	if (CharacterOwner && WaterBodyComponents.Num() > 0)
+	if (CharacterOwner && UpdatedComponent && WaterBodyComponents.Num() > 0)
 	{
 		EWaterBodyQueryFlags QueryFlags =
 			EWaterBodyQueryFlags::ComputeLocation
@@ -364,6 +369,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateWaterInfoForSwim()
 			| EWaterBodyQueryFlags::IncludeWaves;
 
 		bool IsInWater = false;
+		bool bHasSample = false;
 		FVector HighestPlaneLocation = FVector::ZeroVector;
 		FVector HighestPlaneNormal = FVector::ZeroVector;
 		FVector HighestSurfacePosition = FVector::ZeroVector;
@@ -372,21 +378,24 @@ void UAlsCharacterMovementComponent_Extend::UpdateWaterInfoForSwim()
 		for (int i = 0; i < WaterBodyComponents.Num(); ++i)
 		{
 			const auto WaterBody = WaterBodyComponents[i];
+			// 修复：流送中的水体或失败的查询都不能解引用。
+			if (!IsValid(WaterBody)) continue;
 			const auto TryQueryResult = WaterBody->TryQueryWaterInfoClosestToWorldLocation(UpdatedComponent->GetComponentLocation(), QueryFlags);
-			const auto QueryResult = TryQueryResult.GetValue();
 			
 			if (!TryQueryResult.HasValue())
 			{
 				continue;
 			}
 			
+			const auto& QueryResult = TryQueryResult.GetValue();
 			if (QueryResult.IsInWater() && !IsInWater)
 			{
 				IsInWater = true;
 			}
 			
-			if (i == 0)
+			if (!bHasSample)
 			{
+				bHasSample = true;
 				HighestPlaneLocation = QueryResult.GetWaterPlaneLocation();
 				HighestPlaneNormal = QueryResult.GetWaterPlaneNormal();
 				HighestSurfacePosition = QueryResult.GetWaterSurfaceLocation();
@@ -453,6 +462,8 @@ UWaterBodyComponent* UAlsCharacterMovementComponent_Extend::GetCurrentWaterBodyC
 {
 	TArray<UWaterBodyComponent*> OverlappedWaterBodyComponents = WaterBodyComponents;
 
+	// 修复：指针数组排序会自动解引用，两帧间已销毁的水体先剔除。
+	OverlappedWaterBodyComponents.RemoveAll([](const UWaterBodyComponent* Body) { return !IsValid(Body); });
 	OverlappedWaterBodyComponents.Sort([](const UWaterBodyComponent& ABody, const UWaterBodyComponent& BBody)
 	{
 		// Using PP calculation ---------------------------------------------------------------------------------------
@@ -479,7 +490,16 @@ UWaterBodyComponent* UAlsCharacterMovementComponent_Extend::GetCurrentWaterBodyC
 void UAlsCharacterMovementComponent_Extend::GetDefaultUnscaledCapsule(float& OutCapsuleHalfHeight,
 	float& OutCapsuleRadius) const
 {
-	Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetDefaultCapsule(OutCapsuleHalfHeight, OutCapsuleRadius);
+	// 修复：查询接口可以在组件尚未关联扩展角色时调用。
+	OutCapsuleHalfHeight = OutCapsuleRadius = 0.0f;
+	if (auto* Character = Cast<AAlsCharacter_Extend>(GetCharacterOwner()))
+	{
+		Character->GetDefaultCapsule(OutCapsuleHalfHeight, OutCapsuleRadius);
+	}
+	else if (CharacterOwner && CharacterOwner->GetCapsuleComponent())
+	{
+		CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleSize(OutCapsuleRadius, OutCapsuleHalfHeight);
+	}
 }
 
 void UAlsCharacterMovementComponent_Extend::GetDefaultScaledCapsule(float& OutCapsuleHalfHeight,
@@ -488,8 +508,18 @@ void UAlsCharacterMovementComponent_Extend::GetDefaultScaledCapsule(float& OutCa
 	float UnscaledCapsuleHalfHeight;
 	float UnscaledCapsuleRadius;
 	GetDefaultUnscaledCapsule(UnscaledCapsuleHalfHeight, UnscaledCapsuleRadius);
-	OutCapsuleRadius = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetScaledRadius(UnscaledCapsuleRadius);
-	OutCapsuleHalfHeight = Cast<AAlsCharacter_Extend>(GetCharacterOwner())->GetScaledHaleHeight(UnscaledCapsuleHalfHeight);
+	if (const auto* Character = Cast<AAlsCharacter_Extend>(GetCharacterOwner()))
+	{
+		OutCapsuleRadius = Character->GetScaledRadius(UnscaledCapsuleRadius);
+		OutCapsuleHalfHeight = Character->GetScaledHaleHeight(UnscaledCapsuleHalfHeight);
+	}
+	else
+	{
+		const auto* Capsule = CharacterOwner ? CharacterOwner->GetCapsuleComponent() : nullptr;
+		const float Scale = Capsule ? Capsule->GetShapeScale() : 0.0f;
+		OutCapsuleRadius = UnscaledCapsuleRadius * Scale;
+		OutCapsuleHalfHeight = UnscaledCapsuleHalfHeight * Scale;
+	}
 }
 
 void UAlsCharacterMovementComponent_Extend::GetUnscaledCrouchHalfHeight(float& OutCapsuleHalfHeight) const
@@ -498,7 +528,7 @@ void UAlsCharacterMovementComponent_Extend::GetUnscaledCrouchHalfHeight(float& O
 
 	const auto AlsCharExtend = Cast<AAlsCharacter_Extend>(GetCharacterOwner());
 	if (!AlsCharExtend) return;
-	if (const auto FoundSettings = AlsCharExtend->GetCapsuleSettings())
+	if (const auto FoundSettings = AlsCharExtend ? AlsCharExtend->GetCapsuleSettings() : nullptr)
 	{
 		bool bValid;
 		const auto CapsuleSize = FoundSettings->QueryCapsuleSizeByTag(AlsStanceTags::Crouching, bValid);
@@ -954,9 +984,14 @@ void UAlsCharacterMovementComponent_Extend::StopClimbing(float deltaTime, int32 
 		SetMovementMode(MOVE_Walking);
 		StartNewPhysics(deltaTime, Iterations);
 		const auto Character = Cast<AAlsCharacter_Extend>(CharacterOwner);
+		if (!IsValid(Character)) return;
 		if (StopClimbingType == SCT_ClimbDownFloor)
 		{
-			Character->GetMesh()->GetAnimInstance()->Montage_Play(GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDownFloorMontage);
+			// 修复：落地过程中网格上的动画实例可能已经卸载。
+			if (auto* Anim = Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr)
+			{
+				Anim->Montage_Play(GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDownFloorMontage);
+			}
 		}
 		else
 		{
@@ -1065,7 +1100,10 @@ void UAlsCharacterMovementComponent_Extend::UpdateClimbDashState(float deltaTime
 
 	// Better to cache it when dash starts
 	float MinTime, MaxTime;
-	GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDashCurve->GetTimeRange(MinTime, MaxTime);
+	// 修复：冲刺中途可更换配置，旧曲线此时可能不存在。
+	const auto Curve = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDashCurve;
+	if (!Curve) { StopClimbDashing(); return; }
+	Curve->GetTimeRange(MinTime, MaxTime);
 	
 	if (CurrentClimbDashTime >= MaxTime)
 	{
@@ -1076,7 +1114,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateClimbDashState(float deltaTime
 void UAlsCharacterMovementComponent_Extend::StopClimbDashing()
 {
 	bIsClimbDashing = false;
-	Cast<AAlsCharacter_Extend>(GetCharacterOwner())->K2_ExitClimbDash();
+	if (auto* Extended = Cast<AAlsCharacter_Extend>(GetCharacterOwner())) Extended->K2_ExitClimbDash();
 	CurrentClimbDashTime = 0.f;
 	ClimbDashDirection = FVector::ZeroVector;
 }
@@ -1097,13 +1135,10 @@ void UAlsCharacterMovementComponent_Extend::SetMovementSettingsExtend(UAlsMoveme
 	}
 }
 
-UAlsMovementSettings_Extend* UAlsCharacterMovementComponent_Extend::GetMovementSettingsExtendSafe() const
+const UAlsMovementSettings_Extend* UAlsCharacterMovementComponent_Extend::GetMovementSettingsExtendSafe() const
 {
-	if (MovementSettings_Extend)
-	{
-		return MovementSettings_Extend;
-	}
-	return NewObject<UAlsMovementSettings_Extend>();
+	// 修复：所有调用方只读配置；未指定资产时复用类默认对象，避免每帧分配 UObject。
+	return MovementSettings_Extend ? MovementSettings_Extend.Get() : GetDefault<UAlsMovementSettings_Extend>();
 }
 
 void UAlsCharacterMovementComponent_Extend::EnterClimbing()
@@ -1125,6 +1160,7 @@ void UAlsCharacterMovementComponent_Extend::CancelClimbing()
 void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward, FVector& Down, FRotator& FaceTo, bool& bInCanClimbDown) const
 {
 	bInCanClimbDown = false;
+	if (!HasValidData() || !Cast<AAlsCharacter_Extend>(CharacterOwner)) return;
 
 	//0.Check stand still, and not crouching(crouch will trigger some issue.)
 	if (!Acceleration.IsNearlyZero() ||
@@ -1250,33 +1286,34 @@ void UAlsCharacterMovementComponent_Extend::CheckClimbDownLedge(FVector& Forward
 
 void UAlsCharacterMovementComponent_Extend::EnterSwing(ASwingRopeActor* RopeActor)
 {
-	if (!RopeActor)
+	// 修复：绳索销毁、流送卸载或切换绳索时，不能保留旧的攀附登记。
+	if (!IsValid(RopeActor) || !IsValid(RopeActor->SplineComponent) || !HasValidData())
 	{
 		return;
 	}
 	
+	if (SwingActor && SwingActor != RopeActor) ExitSwing(false);
 	SwingActor = RopeActor;
 	OnRopeDistance = SwingActor->SplineComponent->GetDistanceAlongSplineAtLocation(UpdatedComponent->GetComponentLocation(), ESplineCoordinateSpace::World);
-	SwingActor->PlayersOnRope.Add(GetCharacterOwner());
+	SwingActor->PlayersOnRope.AddUnique(GetCharacterOwner());
 	SwingActor->SetIgnore();
 	SetMovementMode(MOVE_Custom, ECustomMovementMode::CMOVE_RopeSwing);
 }
 
 void UAlsCharacterMovementComponent_Extend::ExitSwing(bool bWantsToJump)
 {
-	if (!SwingActor)
+	// 修复：先摘除当前指针，SetMovementMode 可同步回调 ExitSwing。
+	auto* PreviousRope = SwingActor;
+	SwingActor = nullptr;
+	OnRopeDistance = 0.0f;
+	if (IsValid(PreviousRope) && CharacterOwner)
 	{
-		return;
+		PreviousRope->PlayersOnRope.Remove(CharacterOwner);
+		PreviousRope->SetIgnore();
+		CharacterOwner->MoveIgnoreActorRemove(PreviousRope);
+		if (CharacterOwner->HasAuthority()) RemoveIgnoreSwingRope(PreviousRope);
 	}
-	
-	SwingActor->PlayersOnRope.Remove(GetCharacterOwner());
-	SwingActor->SetIgnore();
-	GetCharacterOwner()->MoveIgnoreActorRemove(SwingActor);
-
-	if (ROLE_Authority)
-	{
-		RemoveIgnoreSwingRope(SwingActor);
-	}
+	if (!HasValidData()) return;
 
 	if (IsSwinging())
 	{
@@ -1297,8 +1334,6 @@ void UAlsCharacterMovementComponent_Extend::ExitSwing(bool bWantsToJump)
 		}
 	}
 
-	SwingActor = nullptr;
-	OnRopeDistance = 0.0f;
 }
 
 int32 GetNearestSplinePointIndex(const USplineComponent* Spline, float Distance)
@@ -1336,7 +1371,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSwing(float deltaTime, int32 Ite
 		return;
 	}
 
-	if (!SwingActor)
+	if (!IsValid(SwingActor) || !IsValid(SwingActor->SplineComponent) || SwingActor->SplineComponent->GetNumberOfSplinePoints() < 2)
 	{
 		ExitSwing(false);
 		return;
@@ -1349,7 +1384,7 @@ void UAlsCharacterMovementComponent_Extend::PhysSwing(float deltaTime, int32 Ite
 	OnRopeDistance = FMath::Clamp(OnRopeDistance - FMath::Sign(GetGravitySpaceZ(Acceleration)) * MoveUpDownSpeed * deltaTime, 0.0f, MaxDistance);
 	
 	int32 Key = GetNearestSplinePointIndex(SwingActor->SplineComponent, OnRopeDistance);
-	if (SwingActor->CapsuleComponents.IsValidIndex(Key))
+	if (SwingActor->CapsuleComponents.IsValidIndex(Key) && IsValid(SwingActor->CapsuleComponents[Key]))
 	{
 		SwingActor->CapsuleComponents[Key]->AddForceAtLocation(GetGravityDirection() * 980.0f, UpdatedComponent->GetComponentLocation());
 		SwingActor->CapsuleComponents[Key]->AddForceAtLocation(Acceleration, UpdatedComponent->GetComponentLocation());
@@ -1374,7 +1409,8 @@ bool UAlsCharacterMovementComponent_Extend::IsSwinging() const
 
 void UAlsCharacterMovementComponent_Extend::RemoveIgnoreSwingRope_Implementation(AActor* RemoveActor)
 {
-	GetCharacterOwner()->MoveIgnoreActorRemove(SwingActor);
+	// 修复：RPC 到达时可能已经换绳，使用消息中指定的旧绳索。
+	if (CharacterOwner && RemoveActor) CharacterOwner->MoveIgnoreActorRemove(RemoveActor);
 }
 
 void UAlsCharacterMovementComponent_Extend::TryClimbDashing()
@@ -1382,7 +1418,7 @@ void UAlsCharacterMovementComponent_Extend::TryClimbDashing()
 	if (GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDashCurve && bIsClimbDashing == false && IsClimbing())
 	{
 		bIsClimbDashing = true;
-		Cast<AAlsCharacter_Extend>(GetCharacterOwner())->K2_EnterClimbDash();
+		if (auto* Extended = Cast<AAlsCharacter_Extend>(GetCharacterOwner())) Extended->K2_EnterClimbDash();
 		CurrentClimbDashTime = 0.f;
 		
 		StoreClimbDashDirection();
@@ -1417,6 +1453,9 @@ bool UAlsCharacterMovementComponent_Extend::IsClimbing() const
 
 bool UAlsCharacterMovementComponent_Extend::CanStartClimbing(float& HorizontalAccelerationDegrees, TArray<FHitResult>& InCurrentWallHits, FHitResult& InVelocityWallHit, const FVector& CompLoc, const FVector& CompForwardVec, const bool bSkipEyeTrace) const
 {
+	// 修复：未初始化时提供确定的失败输出。
+	HorizontalAccelerationDegrees = 180.0f;
+	if (!HasValidData()) return false;
 	// Check movement mode
 	if (IsClimbing() || (!bIsSwimOnSurface && IsSwimming()))
 	{
@@ -1486,7 +1525,7 @@ void UAlsCharacterMovementComponent_Extend::StartClimbingTimer(float HorizontalA
 			
 		if (TryEnterClimbAlpha >= 1.0f)
 		{
-			Cast<AAlsCharacter_Extend>(CharacterOwner)->K2_AutoTryClimb();
+			if (auto* Extended = Cast<AAlsCharacter_Extend>(CharacterOwner)) Extended->K2_AutoTryClimb();
 			TryEnterClimbTime = 0.0f;
 			TryEnterClimbAlpha = 0.0f;
 		}
@@ -1695,11 +1734,12 @@ void UAlsCharacterMovementComponent_Extend::ComputeClimbingVelocity(float deltaT
 
 	if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity())
 	{
-		if (bIsClimbDashing)
+		const auto DashCurve = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDashCurve;
+		if (bIsClimbDashing && DashCurve)
 		{
 			AlignClimbDashDirection();
 
-			const float CurrentCurveSpeed = GetMovementSettingsExtendSafe()->ClimbingSettings.ClimbDashCurve->GetFloatValue(CurrentClimbDashTime);
+			const float CurrentCurveSpeed = DashCurve->GetFloatValue(CurrentClimbDashTime);
 			Velocity = ClimbDashDirection * CurrentCurveSpeed;
 		}
 		else
@@ -1728,8 +1768,27 @@ void UAlsCharacterMovementComponent_Extend::BeginPlay()
 	ClimbQueryParams.bTraceComplex = true;
 }
 
+void UAlsCharacterMovementComponent_Extend::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// 修复：角色销毁或暂时卸载时也要从仍在场的绳索上注销。
+	if (IsValid(SwingActor) && CharacterOwner)
+	{
+		SwingActor->PlayersOnRope.Remove(CharacterOwner);
+		SwingActor->SetIgnore();
+		CharacterOwner->MoveIgnoreActorRemove(SwingActor);
+	}
+	SwingActor = nullptr;
+	Super::EndPlay(EndPlayReason);
+}
+
 void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
 {
+	const auto AlsCharExtend = Cast<AAlsCharacter_Extend>(CharacterOwner);
+	if (!AlsCharExtend || !HasValidData())
+	{
+		Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
+		return;
+	}
 	if (PreviousMovementMode == MOVE_Custom && PreviousCustomMode == CMOVE_Slide) ExitSlide();
 	if (IsSliding()) EnterSlide();
 
@@ -1758,8 +1817,6 @@ void UAlsCharacterMovementComponent_Extend::OnMovementModeChanged(EMovementMode 
 		Cast<AAlsCharacter_Extend>(CharacterOwner)->UpdateMeshRelativeLocation(FinalHalfHeight, true);
 	}
 
-	const auto AlsCharExtend = Cast<AAlsCharacter_Extend>(GetCharacterOwner());
-	if (!AlsCharExtend) return;
 	const auto FoundSettings = AlsCharExtend->GetCapsuleSettings();
 	if (IsSwimming() && FoundSettings)
 	{
@@ -2010,7 +2067,7 @@ void UAlsCharacterMovementComponent_Extend::UpdateCharacterStateBeforeMovement(f
 			bIsSwimOnSurface = GetImmerseDepth() <= GetMovementSettingsExtendSafe()->SwimmingSettings.SwimOnSurfaceDepth;
 			// Update swimming state.
 			const FGameplayTag SwimmingStateTag = bIsSwimOnSurface ? AlsSwimmingStateTags::Surface : AlsSwimmingStateTags::Underwater;
-			Cast<AAlsCharacter_Extend>(GetOwner())->SetGameplayTagInASC(SwimmingStateTag);
+			if (auto* Extended = Cast<AAlsCharacter_Extend>(GetOwner())) Extended->SetGameplayTagInASC(SwimmingStateTag);
 		}
 		else
 		{
@@ -2117,13 +2174,14 @@ APhysicsVolume* UAlsCharacterMovementComponent_Extend::GetPhysicsVolume() const
 	{
 		return Super::GetPhysicsVolume();
 	}
-	return GetWorld()->GetDefaultPhysicsVolume();
+	// 修复：组件尚未进入世界时没有默认物理体积。
+	return GetWorld() ? GetWorld()->GetDefaultPhysicsVolume() : nullptr;
 }
 
 bool UAlsCharacterMovementComponent_Extend::IsInWater() const
 {
 	// Check is overlap water.
-	if (WaterBodyComponents.Num() == 0)
+	if (!HasValidData() || !Cast<AAlsCharacter_Extend>(CharacterOwner) || WaterBodyComponents.Num() == 0)
 	{
 		return false;
 	}
@@ -2159,7 +2217,7 @@ float UAlsCharacterMovementComponent_Extend::ImmersionDepth() const
 	GetDefaultScaledCapsule(ScaledHalfHeight, ScaledRadius);
 
 	const auto AlsCharExtend = Cast<AAlsCharacter_Extend>(GetCharacterOwner());
-	if (const auto FoundSettings = AlsCharExtend->GetCapsuleSettings())
+	if (const auto FoundSettings = AlsCharExtend ? AlsCharExtend->GetCapsuleSettings() : nullptr)
 	{
 		bool bValid;
         const auto Settings = FoundSettings->QueryCapsuleSizeByTag(AlsLocomotionModeTags::Swimming, bValid);
@@ -2170,7 +2228,7 @@ float UAlsCharacterMovementComponent_Extend::ImmersionDepth() const
 	}
 
 	float Depth = 0.f;
-	if (WaterBodyComponents.Num() > 0)
+	if (UpdatedComponent && ScaledHalfHeight > UE_SMALL_NUMBER && WaterBodyComponents.Num() > 0)
 	{
 		Depth = FMath::Clamp(GetImmerseDepth() / (ScaledHalfHeight * 2), 0.f, 1.0f);
 	}
@@ -2197,14 +2255,14 @@ void UAlsCharacterMovementComponent_Extend::EnterSlide()
 {
 	Velocity += Velocity.GetSafeNormal2D() * GetMovementSettingsExtendSafe()->SlidingSettings.SlideEnterImpulse;
 	SetMaxAllowedGait(AlsGaitTags::Walking);
-	Cast<AAlsCharacter_Extend>(CharacterOwner)->K2_EnterSlide();
+	if (auto* Extended = Cast<AAlsCharacter_Extend>(CharacterOwner)) Extended->K2_EnterSlide();
 	FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, true, nullptr);
 }
 
 void UAlsCharacterMovementComponent_Extend::ExitSlide()
 {
 	SetMaxAllowedGait(AlsGaitTags::Sprinting);
-	Cast<AAlsCharacter_Extend>(CharacterOwner)->K2_ExitSlide();
+	if (auto* Extended = Cast<AAlsCharacter_Extend>(CharacterOwner)) Extended->K2_ExitSlide();
 }
 
 void UAlsCharacterMovementComponent_Extend::PhysSliding(float deltaTime, int32 Iterations)
@@ -2432,7 +2490,8 @@ void UAlsCharacterMovementComponent_Extend::ToggleGlide()
 
 bool UAlsCharacterMovementComponent_Extend::CheckCanGlide()
 {
-	if (!Cast<AAlsCharacter_Extend>(CharacterOwner)->IsAllowGliding())
+	const auto* Extended = Cast<AAlsCharacter_Extend>(CharacterOwner);
+	if (!Extended || !Extended->IsAllowGliding())
 	{
 		return false;
 	}

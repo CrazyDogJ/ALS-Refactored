@@ -22,6 +22,10 @@ public:
 	ASwingRopeActor();
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void BeginDestroy() override;
+	virtual void UnregisterAllComponents(bool bForReregister = false) override;
+	virtual void PostRegisterAllComponents() override;
 	virtual void Tick(float DeltaTime) override;
 	void UpdateSpline();
 	void SetIgnore();
@@ -76,4 +80,14 @@ public:
 
 	void ConstructRopeByInstances();
 	void UpdateSplineByInstances();
+
+private:
+	// 修复：刚体只弱引用 BodySetup，由绳索持有至物理实例释放。
+	UPROPERTY(Transient, DuplicateTransient)
+	TObjectPtr<UBodySetup> RopeBodySetup;
+
+	// 修复：区分运行时生成的组件与蓝图提供的外部组件。
+	TArray<TWeakObjectPtr<UActorComponent>> GeneratedComponents;
+	bool bRestoreRegisteredRope = false;
+	void ReleaseRopePhysics();
 };

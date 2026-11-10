@@ -13,6 +13,8 @@
 void FAlsRigUnit_FootBoxTrace::Initialize()
 {
 	bInitialized = false;
+	// 修复：重建 Rig 后旧网格的足部碰撞盒已失效。
+	bFootBoxValid = false;
 }
 
 FAlsRigUnit_FootBoxTrace_Execute()
@@ -28,7 +30,7 @@ FAlsRigUnit_FootBoxTrace_Execute()
 			{
 				for (auto Body : SkeletalMeshComp->GetPhysicsAsset()->SkeletalBodySetups)
 				{
-					if (Body->BoneName == CurrentFootName)
+					if (IsValid(Body) && Body->BoneName == CurrentFootName)
 					{
 						if (Body->AggGeom.BoxElems.IsValidIndex(0))
 						{
@@ -48,7 +50,8 @@ FAlsRigUnit_FootBoxTrace_Execute()
 	}
 	
 	FHitResult FootBoxHit;
-	if (bFootBoxValid)
+	// 修复：编辑器预览及世界退出阶段可能没有射线查询世界。
+	if (bFootBoxValid && ExecuteContext.GetWorld())
 	{
 		auto FinalTransform = FTransform(Rotation, Location);
 		auto CalLocation = FinalTransform.TransformPosition(FootBox.Center);

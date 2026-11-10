@@ -30,7 +30,7 @@ void AAlsCharacter_Extend::OnConstruction(const FTransform& Transform)
 
 void AAlsCharacter_Extend::CalcCamera(float DeltaTime, FMinimalViewInfo& ViewInfo)
 {
-	if (Camera->IsActive())
+	if (IsValid(Camera) && Camera->IsActive())
 	{
 		Camera->GetViewInfo(ViewInfo);
 		return;
@@ -43,6 +43,8 @@ void AAlsCharacter_Extend::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// 修复：父类 Tick 的蓝图事件可以销毁角色或移动组件。
+	if (!IsValid(MovementComponent_Extend) || IsActorBeingDestroyed()) return;
 	// Physical material support.
 	if (CurrentPhysicalMaterial != GetCharacterMovement()->CurrentFloor.HitResult.PhysMaterial)
 	{
@@ -76,7 +78,7 @@ void AAlsCharacter_Extend::Tick(float DeltaSeconds)
 	//}
 
 	// Look at extend.
-	if (LookTargetComponent)
+	if (IsValid(LookTargetComponent))
 	{
 		if (auto AICon = Cast<AAIController>(GetController()))
 		{
@@ -205,7 +207,7 @@ FGameplayTag AAlsCharacter_Extend::CalculateActualGait(const FGameplayTag MaxAll
 {
 	if (LocomotionMode == AlsLocomotionModeTags::Swimming)
 	{
-		if (LocomotionState.Speed < MovementSettings_Extend->SwimmingSettings.RunSpeed + 10.0f
+		if (LocomotionState.Speed < MovementComponent_Extend->GetMovementSettingsExtendSafe()->SwimmingSettings.RunSpeed + 10.0f
 			|| MaxAllowedGait != AlsGaitTags::Sprinting)
 		{
 			return AlsGaitTags::Running;
@@ -379,7 +381,7 @@ void AAlsCharacter_Extend::PostInitializeComponents()
 		ASC->SetNumericAttributeBase(UAlsAttributeSet::GetJumpSpeedAttribute(), GetCharacterMovement()->JumpZVelocity);
 	}
 	
-	MovementComponent_Extend->SetMovementSettingsExtend(MovementSettings_Extend);
+	if (MovementComponent_Extend) MovementComponent_Extend->SetMovementSettingsExtend(MovementSettings_Extend);
 }
 
 void AAlsCharacter_Extend::RefreshRotationMode()
@@ -472,12 +474,8 @@ void AAlsCharacter_Extend::MulticastClimbDownLedge_Implementation()
 
 void AAlsCharacter_Extend::OnClimbDownMontageBlendOut(UAnimMontage* Montage, bool bInterrupted)
 {
-	if (!MovementSettings_Extend)
-	{
-		return;
-	}
-	
-	if (Montage != MovementSettings_Extend->ClimbingSettings.ClimbDownMontage)
+	// 修复：配置可在播放中替换，按已绑定的动作结束状态。
+	if (GetLocomotionAction() != AlsLocomotionActionTags::ClimbDownLedge)
 	{
 		return;
 	}
@@ -525,6 +523,14 @@ void AAlsCharacter_Extend::ClimbDownLedgeImplementation()
 	UE_LOG(LogTemp, Warning, TEXT("Climb down params : Component : %s, Bone Name : %s Transform_A : %s, Transform_B : %s"),
 		*Params.Component->GetName(), *Params.SocketName.ToString(), *Params.Transform_A.ToString(), *Params.Transform_B.ToString())
 
+	// 修复：在进入飞行模式前确认蒙太奇可播放且已取得结束回调。
+	auto* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	auto* Montage = MovementSettings_Extend->ClimbingSettings.ClimbDownMontage;
+	if (!Anim || !Montage || !MotionWarpingComponent || Anim->Montage_Play(Montage) <= 0.0f) return;
+	auto* BlendOut = Anim->Montage_GetBlendingOutDelegate(Montage);
+	if (!BlendOut) return;
+	BlendOut->BindUFunction(this, TEXT("OnClimbDownMontageBlendOut"));
+
 	// Execute
 	MotionWarpingComponent->AddOrUpdateWarpTargetFromComponent(MovementSettings_Extend->ClimbingSettings.WarpTarget_A,
 													   Params.Component, Params.SocketName, true,
@@ -539,10 +545,6 @@ void AAlsCharacter_Extend::ClimbDownLedgeImplementation()
 	// Set base movement primitive component
 	FMovementBaseInterfaceData MovementBaseData{Params.Component};
 	GetCharacterMovement()->SetBase(&MovementBaseData, Params.SocketName);
-	// Set montage
-	GetMesh()->GetAnimInstance()->Montage_Play(MovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
-	auto Delegate = GetMesh()->GetAnimInstance()->Montage_GetBlendingOutDelegate(MovementSettings_Extend->ClimbingSettings.ClimbDownMontage);
-	Delegate->BindUFunction(this, "OnClimbDownMontageBlendOut");
 	// Set action.
 	SetLocomotionAction(AlsLocomotionActionTags::ClimbDownLedge);
 }
@@ -634,12 +636,15 @@ void AAlsCharacter_Extend::MulticastJumpOutOfWater_Implementation()
 
 UAnimMontage* AAlsCharacter_Extend::SelectClimbToWalkMontage_Implementation()
 {
-	return Settings->Ragdolling.GetUpFrontMontage;
+	return Settings ? Settings->Ragdolling.GetUpFrontMontage.Get() : nullptr;
 }
 
 void AAlsCharacter_Extend::ClimbToWalkGetUp_Implementation()
 {
-	if (GetMesh()->GetAnimInstance()->Montage_Play(SelectClimbToWalkMontage()) > 0.0f)
+	// 修复：蓝图选择蒙太奇时也可能切换网格，播放前重新获取动画实例。
+	auto* Montage = SelectClimbToWalkMontage();
+	auto* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	if (Anim && Montage && Anim->Montage_Play(Montage) > 0.0f)
 	{
 		SetLocomotionAction(AlsLocomotionActionTags::GettingUp);
 	}
@@ -708,8 +713,8 @@ void AAlsCharacter_Extend::AddMovementInput(FVector WorldDirection, float ScaleV
 
 void AAlsCharacter_Extend::RefreshSwimmingRotation(float DeltaTime)
 {
-	if (LocomotionMode != AlsLocomotionModeTags::Swimming &&
-		LocomotionMode != AlsLocomotionModeTags::Flying)
+	if (!Settings || (LocomotionMode != AlsLocomotionModeTags::Swimming &&
+		LocomotionMode != AlsLocomotionModeTags::Flying))
 	{
 		return;
 	}
@@ -826,8 +831,9 @@ void AAlsCharacter_Extend::RefreshSwimmingRotation(float DeltaTime)
 		}
 		else
 		{
-			TargetYawAngle = UE_REAL_TO_FLOAT(
-				ViewState.Rotation.Yaw + GetMesh()->GetAnimInstance()->GetCurveValue(UAlsConstants::RotationYawOffsetCurveName()));
+			// 修复：游泳时切换网格可能暂时没有动画实例。
+			const auto* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+			TargetYawAngle = UE_REAL_TO_FLOAT(ViewState.Rotation.Yaw + (Anim ? Anim->GetCurveValue(UAlsConstants::RotationYawOffsetCurveName()) : 0.0f));
 		}
 
 		const auto RotationInterpolationHalfLife{CalculateGroundedMovingRotationInterpolationHalfLife()};
@@ -860,7 +866,7 @@ void AAlsCharacter_Extend::RefreshGlidingRotation(float DeltaTime)
 	}
 	else
 	{
-		SetRotationSmooth(LocomotionState.VelocityYawAngle, DeltaTime, MovementSettings_Extend->GlidingSettings.GlideRotationInterpSpeed);
+		SetRotationSmooth(LocomotionState.VelocityYawAngle, DeltaTime, MovementComponent_Extend->GetMovementSettingsExtendSafe()->GlidingSettings.GlideRotationInterpSpeed);
 	}
 }
 
@@ -1029,13 +1035,15 @@ void AAlsCharacter_Extend::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActo
 	if ((GetCharacterMovement()->IsFalling() || GetCharacterMovement()->IsSwimming()) && !GetCharacterMovement()->CurrentRootMotion.HasVelocity())
 	{
 		auto comp = MovementComponent_Extend;
+		// 修复：碰撞通知可能早于移动组件绑定 UpdatedComponent。
+		if (!comp || !comp->UpdatedComponent) return;
 		float AccelHorDegree;
 		bool bCanStartClimbing = comp->CanStartClimbing(AccelHorDegree, comp->CurrentWallHits, comp->VelocityWallHit,
 			comp->UpdatedComponent->GetComponentLocation(), comp->UpdatedComponent->GetForwardVector());
 
 		const float MinHorizontalDegreesToStartClimbing = MovementSettings_Extend ?
 			MovementSettings_Extend->ClimbingSettings.MinHorizontalDegreesToStartClimbing : 50.0f;
-		if (AccelHorDegree <= MinHorizontalDegreesToStartClimbing && bCanStartClimbing)
+		if (bCanStartClimbing && AccelHorDegree <= MinHorizontalDegreesToStartClimbing)
 		{
 			K2_AutoTryClimb();
 			comp->TryEnterClimbTime = 0.0f;
@@ -1046,19 +1054,20 @@ void AAlsCharacter_Extend::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActo
 
 bool AAlsCharacter_Extend::StartMantlingSwimming()
 {
-	return LocomotionMode == AlsLocomotionModeTags::Swimming && IsLocallyControlled() &&
+	// 修复：没有角色设置时不可读取攀越轨迹。
+	return LocomotionMode == AlsLocomotionModeTags::Swimming && IsLocallyControlled() && Settings &&
 		   StartMantling(Settings->Mantling.InAirTrace);
 }
 
 bool AAlsCharacter_Extend::StartMantlingFreeClimb()
 {
-	return LocomotionMode == AlsLocomotionModeTags::FreeClimbing && IsLocallyControlled() &&
+	return LocomotionMode == AlsLocomotionModeTags::FreeClimbing && IsLocallyControlled() && Settings &&
 		   StartMantling(Settings->Mantling.FreeClimbTrace); 
 }
 
 bool AAlsCharacter_Extend::StartMantlingGliding()
 {
-	return LocomotionMode == AlsLocomotionModeTags::Gliding && IsLocallyControlled() &&
+	return LocomotionMode == AlsLocomotionModeTags::Gliding && IsLocallyControlled() && Settings &&
 		   StartMantling(Settings->Mantling.InAirTrace); 
 }
 
@@ -1138,7 +1147,11 @@ float AAlsCharacter_Extend::GetScaledHaleHeight(float UnscaledHalfHeight) const
 
 void AAlsCharacter_Extend::TurnInPlaceImmediately_Implementation()
 {
-	Cast<UAlsAnimationInstance_Extend>(GetMesh()->GetAnimInstance())->TurnInPlaceImmediately();
+	// 修复：换装、预览或使用基础 ALS 动画蓝图期间可能没有扩展动画实例。
+	if (auto* Anim = Cast<UAlsAnimationInstance_Extend>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr))
+	{
+		Anim->TurnInPlaceImmediately();
+	}
 }
 
 void AAlsCharacter_Extend::OnJumped_Implementation()
@@ -1152,6 +1165,7 @@ bool AAlsCharacter_Extend::RefreshCustomInAirRotation(float DeltaTime)
 {
 	static constexpr auto RotationInterpolationSpeed{5.0f};
 
+	if (!Settings) return false;
 	switch (Settings->InAirRotationMode)
 	{
 	case EAlsInAirRotationMode::RotateToVelocity:

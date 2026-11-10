@@ -143,9 +143,10 @@ void UAlsAnimationInstance_Extend::NativeInitializeAnimation()
 	}
 }
 
-void UAlsAnimationInstance_Extend::NativeThreadSafeUpdateAnimation(float DeltaTime)
+void UAlsAnimationInstance_Extend::NativeUpdateAnimation(float DeltaTime)
 {
-	Super::NativeThreadSafeUpdateAnimation(DeltaTime);
+	// 修复：眨眼会读写 SkeletalMeshComponent 的 MorphTarget 容器，留在游戏线程执行。
+	Super::NativeUpdateAnimation(DeltaTime);
 
 	UpdateBlink(DeltaTime);
 }
